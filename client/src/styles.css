@@ -256,3 +256,17 @@ button.pill { cursor: pointer; }
 .toast.success { border-left-color: var(--green); }
 .toast.warn { border-left-color: var(--orange); }
 .toast.error { border-left-color: var(--red); }
+
+/* narrow screens: stack the office above the side panel */
+@media (max-width: 1000px) {
+  .app { min-width: 0; height: auto; min-height: 100vh; grid-template-rows: auto 1fr; }
+  .main { grid-template-columns: minmax(0, 1fr); }
+  .stage { border-right: 0; }
+  .office { flex: none; height: 62vh; min-height: 360px; }
+  .roster { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .side { height: 85vh; border-top: 1px solid var(--border); }
+  .topbar { flex-wrap: wrap; height: auto; padding-block: 8px; }
+  .project-picker select { min-width: 0; }
+  .profile { left: 10px; width: auto; bottom: 10px; }
+  .office-banner { flex-wrap: wrap; }
+}
