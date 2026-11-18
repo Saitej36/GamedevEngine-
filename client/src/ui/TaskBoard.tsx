@@ -1,0 +1,233 @@
+import { useMemo, useState } from 'react';
+import type { AgentId, Task, TaskPriority, TaskStatus } from '@pixel/shared';
+import { AGENTS, TASK_STATUS_LABEL, WORKER_IDS } from '@pixel/shared';
+import { useStudio } from '../state/store';
+import { actions } from '../state/controller';
+import { Avatar } from './Avatar';
+import { Markdown, timeAgo } from './format';
+
+const COLUMNS: { title: string; statuses: TaskStatus[] }[] = [
+  { title: 'Queued', statuses: ['queued', 'revision'] },
+  { title: 'In progress', statuses: ['in_progress'] },
+  { title: 'Review', statuses: ['in_review', 'awaiting_approval'] },
+  { title: 'Done', statuses: ['done'] },
+  { title: 'Failed', statuses: ['failed', 'cancelled'] },
+];
+
+const PRIORITY_RANK: Record<TaskPriority, number> = { critical: 0, high: 1, medium: 2, low: 3 };
+
+export function TaskBoard() {
+  const tasks = useStudio((s) => s.tasks);
+  const [filter, setFilter] = useState<AgentId | 'all'>('all');
+  const [showNew, setShowNew] = useState(false);
+  const [open, setOpen] = useState<string | null>(null);
+
+  const visible = useMemo(
+    () =>
+      tasks
+        .filter((t) => filter === 'all' || t.assignee === filter)
+        .sort((a, b) => PRIORITY_RANK[a.priority] - PRIORITY_RANK[b.priority] || a.createdAt.localeCompare(b.createdAt)),
+    [tasks, filter],
+  );
+
+  return (
+    <div className="panel tasks">
+      <div className="toolbar">
+        <select value={filter} onChange={(e) => setFilter(e.target.value as AgentId | 'all')}>
+          <option value="all">All agents</option>
+          {WORKER_IDS.map((id) => (
+            <option key={id} value={id}>
+              {AGENTS[id].name} — {AGENTS[id].title}
+            </option>
+          ))}
+        </select>
+        <span className="grow" />
+        <button className="btn primary" onClick={() => setShowNew((v) => !v)}>
+          {showNew ? 'Close' : '+ New task'}
+        </button>
+      </div>
+      {showNew && <NewTaskForm onDone={() => setShowNew(false)} />}
+      <div className="board">
+        {COLUMNS.map((col) => {
+          const items = visible.filter((t) => col.statuses.includes(t.status));
+          return (
+            <div key={col.title} className="column">
+              <div className="column-head">
+                {col.title} <span className="count">{items.length}</span>
+              </div>
+              {items.map((t) => (
+                <TaskCard key={t.id} task={t} open={open === t.id} onToggle={() => setOpen(open === t.id ? null : t.id)} />
+              ))}
+              {!items.length && <div className="column-empty">—</div>}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function TaskCard({ task: t, open, onToggle }: { task: Task; open: boolean; onToggle: () => void }) {
+  const mode = useStudio((s) => s.mode);
+  const aiLive = useStudio((s) => s.info?.aiMode === 'live');
+  const projectId = useStudio((s) => s.projectId);
+  return (
+    <div className={`card task-card prio-${t.priority} st-${t.status}`}>
+      <button className="task-head" onClick={onToggle}>
+        <Avatar id={t.assignee} size={22} />
+        <span className="task-title">{t.title}</span>
+      </button>
+      <div className="task-meta">
+        <span className={`pill st-${t.status}`}>{TASK_STATUS_LABEL[t.status]}</span>
+        {t.revisionCount > 0 && <span className="pill">rev {t.revisionCount}</span>}
+        {t.requiresApproval && <span className="pill">sign-off</span>}
+        <span className="muted">{t.priority}</span>
+        <span className="grow" />
+        <span className="muted">{timeAgo(t.updatedAt)}</span>
+      </div>
+      {open && (
+        <div className="task-detail">
+          <div className="muted small">
+            {AGENTS[t.assignee].name} · created by {t.createdBy === 'user' ? 'you' : AGENTS[t.createdBy].name}
+            {t.costUsd > 0 && ` · $${t.costUsd.toFixed(3)}`}
+          </div>
+          <Markdown text={t.description} />
+          {t.feedback && (
+            <div className="notice">
+              <strong>Feedback:</strong> <Markdown text={t.feedback} />
+            </div>
+          )}
+          {t.error && <div className="notice error">{t.error}</div>}
+          {t.result && (
+            <details>
+              <summary>Agent report</summary>
+              <Markdown text={t.result} />
+            </details>
+          )}
+          {t.files.length > 0 && (
+            <div className="files-list">
+              {t.files.map((f) =>
+                mode === 'live' && projectId ? (
+                  <button
+                    key={f}
+                    className="link"
+                    onClick={() => useStudio.getState().set({ tab: 'files', openFile: f })}
+                  >
+                    📄 {f}
+                  </button>
+                ) : (
+                  <span key={f}>📄 {f}</span>
+                ),
+              )}
+            </div>
+          )}
+          <div className="actions">
+            {(t.status === 'queued' || t.status === 'revision') && mode === 'live' && aiLive && (
+              <button className="btn" onClick={() => actions.taskAction(t.id, 'start')}>
+                ▶ Run now
+              </button>
+            )}
+            {(t.status === 'failed' || t.status === 'cancelled') && (
+              <button className="btn" onClick={() => actions.taskAction(t.id, 'retry')}>
+                ↻ Retry
+              </button>
+            )}
+            {!['done', 'cancelled', 'failed'].includes(t.status) && (
+              <button className="btn" onClick={() => actions.taskAction(t.id, 'cancel')}>
+                ✕ Cancel
+              </button>
+            )}
+            {(t.status === 'queued' || t.status === 'failed') && (
+              <select value={t.assignee} onChange={(e) => actions.reassign(t.id, e.target.value as AgentId)}>
+                {WORKER_IDS.map((id) => (
+                  <option key={id} value={id}>
+                    → {AGENTS[id].name}
+                  </option>
+                ))}
+              </select>
+            )}
+            <span className="grow" />
+            {mode === 'live' && (
+              <button
+                className="btn danger ghost"
+                onClick={() => confirm(`Delete task "${t.title}"?`) && actions.taskAction(t.id, 'delete')}
+              >
+                Delete
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function NewTaskForm({ onDone }: { onDone: () => void }) {
+  const milestones = useStudio((s) => s.milestones);
+  const [title, setTitle] = useState('');
+  const [description, setDescription] = useState('');
+  const [assignee, setAssignee] = useState<AgentId>('designer');
+  const [priority, setPriority] = useState<TaskPriority>('medium');
+  const [milestoneId, setMilestoneId] = useState('');
+  const [requiresApproval, setRequiresApproval] = useState(false);
+  return (
+    <form
+      className="card form"
+      onSubmit={async (e) => {
+        e.preventDefault();
+        await actions.createTask({ title, description, assignee, priority, milestoneId: milestoneId || null, requiresApproval });
+        onDone();
+      }}
+    >
+      <input placeholder="Task title" value={title} onChange={(e) => setTitle(e.target.value)} required maxLength={160} />
+      <textarea
+        placeholder="What should be produced? Include acceptance criteria and files to read/write."
+        value={description}
+        onChange={(e) => setDescription(e.target.value)}
+        required
+        rows={4}
+      />
+      <div className="row">
+        <label>
+          Assignee
+          <select value={assignee} onChange={(e) => setAssignee(e.target.value as AgentId)}>
+            {WORKER_IDS.map((id) => (
+              <option key={id} value={id}>
+                {AGENTS[id].name} — {AGENTS[id].title}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Priority
+          <select value={priority} onChange={(e) => setPriority(e.target.value as TaskPriority)}>
+            {(['low', 'medium', 'high', 'critical'] as const).map((p) => (
+              <option key={p}>{p}</option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Milestone
+          <select value={milestoneId} onChange={(e) => setMilestoneId(e.target.value)}>
+            <option value="">—</option>
+            {milestones.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.title}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+      <label className="check">
+        <input type="checkbox" checked={requiresApproval} onChange={(e) => setRequiresApproval(e.target.checked)} /> I must
+        sign off the deliverable
+      </label>
+      <div className="actions">
+        <span className="grow" />
+        <button className="btn primary" disabled={!title.trim() || !description.trim()}>
+          Create task
+        </button>
+      </div>
+    </form>
+  );
+}
