@@ -5,6 +5,7 @@ import { useStudio } from '../state/store';
 import { actions } from '../state/controller';
 import { Avatar } from './Avatar';
 import { Markdown, timeAgo } from './format';
+import { TaskHistory } from './History';
 
 const COLUMNS: { title: string; statuses: TaskStatus[] }[] = [
   { title: 'Queued', statuses: ['queued', 'revision'] },
@@ -92,11 +93,12 @@ function TaskCard({ task: t, open, onToggle }: { task: Task; open: boolean; onTo
             {t.costUsd > 0 && ` · $${t.costUsd.toFixed(3)}`}
           </div>
           <Markdown text={t.description} />
-          {t.feedback && (
+          {t.feedback && t.revisionCount > 0 && ['revision', 'in_progress'].includes(t.status) && (
             <div className="notice">
-              <strong>Feedback:</strong> <Markdown text={t.feedback} />
+              <strong>Revision requested:</strong> <Markdown text={t.feedback} />
             </div>
           )}
+          {mode === 'live' && <TaskHistory taskId={t.id} updatedAt={t.updatedAt} />}
           {t.error && <div className="notice error">{t.error}</div>}
           {t.result && (
             <details>

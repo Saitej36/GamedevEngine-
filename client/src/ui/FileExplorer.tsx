@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import type { FileNode } from '@pixel/shared';
 import { api } from '../api/client';
 import { useStudio } from '../state/store';
-import { Markdown } from './format';
+import { MarkdownFile } from './MarkdownDoc';
 
 const IMAGE = /\.(svg|png|jpe?g|gif|webp)$/i;
 const OWNER: Record<string, string> = {
@@ -22,6 +22,7 @@ export function FileExplorer() {
   const [tree, setTree] = useState<FileNode | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [content, setContent] = useState<string>('');
+  const [truncated, setTruncated] = useState(false);
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -39,8 +40,13 @@ export function FileExplorer() {
   useEffect(() => {
     if (!selected || !projectId || IMAGE.test(selected)) return;
     setContent('Loading…');
+    setTruncated(false);
     api.readFile(projectId, selected).then(
-      (t) => setContent(t.length > 300_000 ? t.slice(0, 300_000) + '\n…(truncated)' : t),
+      (t) => {
+        // Very large files are previewed partially; the file itself (and Download) is untouched.
+        setTruncated(t.length > 300_000);
+        setContent(t.length > 300_000 ? t.slice(0, 300_000) : t);
+      },
       () => setContent('(could not read file)'),
     );
   }, [selected, projectId, version]);
@@ -68,13 +74,20 @@ export function FileExplorer() {
                   Download
                 </a>
               </div>
+              {truncated && <div className="notice warn">Preview shows the first 300,000 characters. Download for the full file.</div>}
               {IMAGE.test(selected) ? (
                 <div className="image-preview">
                   <img src={`${api.fileUrl(projectId, selected)}&v=${version}`} alt={selected} />
                 </div>
               ) : selected.endsWith('.md') ? (
                 <div className="doc-preview">
-                  <Markdown text={content} />
+                  <MarkdownFile
+                    key={selected}
+                    source={content}
+                    filePath={selected}
+                    onOpenFile={setSelected}
+                    assetUrl={(p) => `${api.fileUrl(projectId, p)}&v=${version}`}
+                  />
                 </div>
               ) : (
                 <pre className="code-preview">{content}</pre>

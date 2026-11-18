@@ -24,7 +24,21 @@ function setup(behaviour: (o: RunOptions) => Partial<RunResult>) {
   const calls: RunOptions[] = [];
   const fake = async (o: RunOptions): Promise<RunResult> => {
     calls.push(o);
-    return { ok: true, sessionId: 'sess', text: 'done', costUsd: 0.01, turns: 1, files: [], error: '', aborted: false, ...behaviour(o) };
+    return {
+      ok: true,
+      sessionId: 'sess',
+      text: 'done',
+      costUsd: 0.01,
+      costAvailable: true,
+      usage: null,
+      durationMs: null,
+      model: null,
+      turns: 1,
+      files: [],
+      error: '',
+      aborted: false,
+      ...behaviour(o),
+    };
   };
   const studio = new Studio(store, hub, fake, () => true);
   const project = studio.createProject({ name: 'Test', genre: 'Puzzle', brief: 'b', repoUrl: '' });

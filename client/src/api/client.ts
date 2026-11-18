@@ -1,4 +1,7 @@
 import type {
+  AgentRun,
+  TaskReview,
+  UsageSummary,
   AgentEvent,
   AgentId,
   AgentProfile,
@@ -93,4 +96,6 @@ export const api = {
   },
   writeFile: (projectId: string, path: string, content: string) => req('PUT', `/projects/${projectId}/file`, { path, content }),
   agent: (id: AgentId) => req<AgentDetail>('GET', `/agents/${id}`),
+  taskHistory: (id: string) => req<{ reviews: TaskReview[]; runs: AgentRun[] }>('GET', `/tasks/${id}/history`),
+  usage: (projectId: string) => req<{ summary: UsageSummary; runs: AgentRun[] }>('GET', `/projects/${projectId}/usage`),
 };

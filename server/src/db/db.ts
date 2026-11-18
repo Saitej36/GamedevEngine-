@@ -1,7 +1,7 @@
 import { DatabaseSync } from 'node:sqlite';
 import { config } from '../config.js';
 
-const MIGRATIONS: string[] = [
+export const MIGRATIONS: string[] = [
   `
   CREATE TABLE IF NOT EXISTS projects (
     id TEXT PRIMARY KEY,
@@ -88,6 +88,68 @@ const MIGRATIONS: string[] = [
     activity TEXT NOT NULL DEFAULT '',
     updated_at TEXT NOT NULL
   );
+  `,
+  // v2 — per-run usage/session tracking and append-only review history.
+  // Existing rows are only copied from, never modified, so earlier data is preserved.
+  `
+  CREATE TABLE IF NOT EXISTS agent_runs (
+    id TEXT PRIMARY KEY,
+    project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    task_id TEXT REFERENCES tasks(id) ON DELETE SET NULL,
+    agent_id TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    session_id TEXT,
+    status TEXT NOT NULL DEFAULT 'running',
+    cost_usd REAL,
+    cost_status TEXT NOT NULL DEFAULT 'unavailable',
+    input_tokens INTEGER,
+    output_tokens INTEGER,
+    cache_read_tokens INTEGER,
+    cache_creation_tokens INTEGER,
+    num_turns INTEGER,
+    duration_ms INTEGER,
+    model TEXT,
+    error TEXT NOT NULL DEFAULT '',
+    started_at TEXT NOT NULL,
+    finished_at TEXT
+  );
+  CREATE INDEX IF NOT EXISTS idx_runs_project ON agent_runs(project_id, started_at);
+  CREATE INDEX IF NOT EXISTS idx_runs_task ON agent_runs(task_id);
+  CREATE INDEX IF NOT EXISTS idx_runs_session ON agent_runs(session_id);
+
+  CREATE TABLE IF NOT EXISTS task_reviews (
+    id TEXT PRIMARY KEY,
+    project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+    reviewer TEXT NOT NULL,
+    decision TEXT NOT NULL,
+    feedback TEXT NOT NULL DEFAULT '',
+    revision INTEGER,
+    run_id TEXT,
+    approval_id TEXT,
+    created_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_reviews_task ON task_reviews(task_id, created_at);
+
+  -- Backfill: a task's pre-v2 cost was one figure covering its run(s) and review(s).
+  INSERT OR IGNORE INTO agent_runs (id, project_id, task_id, agent_id, kind, session_id, status, cost_usd, cost_status, started_at, finished_at)
+    SELECT 'run_legacy_' || id, project_id, id, assignee, 'legacy', session_id, 'ok',
+           CASE WHEN cost_usd > 0 THEN cost_usd ELSE NULL END,
+           CASE WHEN cost_usd > 0 THEN 'legacy_aggregate' ELSE 'unavailable' END,
+           COALESCE(started_at, created_at), updated_at
+    FROM tasks WHERE cost_usd > 0 OR session_id IS NOT NULL;
+  -- Backfill: Director planning sessions were stored on the project without cost.
+  INSERT OR IGNORE INTO agent_runs (id, project_id, task_id, agent_id, kind, session_id, status, cost_usd, cost_status, started_at, finished_at)
+    SELECT 'run_legacy_dir_' || id, id, NULL, 'director', 'planning', director_session_id, 'ok', NULL, 'unavailable', created_at, updated_at
+    FROM projects WHERE director_session_id IS NOT NULL;
+  -- Backfill: the single feedback column (may hold a Director note or an owner comment).
+  INSERT OR IGNORE INTO task_reviews (id, project_id, task_id, reviewer, decision, feedback, revision, created_at)
+    SELECT 'rev_legacy_' || id, project_id, id, 'legacy', 'note', feedback, revision_count, updated_at
+    FROM tasks WHERE feedback != '';
+  -- Backfill: resolved owner sign-offs.
+  INSERT OR IGNORE INTO task_reviews (id, project_id, task_id, reviewer, decision, feedback, approval_id, created_at)
+    SELECT 'rev_legacy_' || a.id, a.project_id, a.task_id, 'owner', a.status, a.response, a.id, COALESCE(a.resolved_at, a.created_at)
+    FROM approvals a JOIN tasks t ON t.id = a.task_id WHERE a.status != 'pending';
   `,
 ];
 

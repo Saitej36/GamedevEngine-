@@ -2,8 +2,12 @@
   "name": "pixel-studio",
   "private": true,
   "version": "0.1.0",
-  "description": "PIXEL STUDIO — a pixel-art office where Claude Agent SDK employees build games",
-  "workspaces": ["shared", "server", "client"],
+  "description": "PIXEL STUDIO \u2014 a pixel-art office where Claude Agent SDK employees build games",
+  "workspaces": [
+    "shared",
+    "server",
+    "client"
+  ],
   "scripts": {
     "dev": "concurrently -n server,client -c blue,magenta \"npm run dev -w server\" \"npm run dev -w client\"",
     "dev:client": "npm run dev -w client",
@@ -11,11 +15,13 @@
     "build": "npm run build -w client",
     "start": "npm run start -w server",
     "typecheck": "npm run typecheck -w shared && npm run typecheck -w server && npm run typecheck -w client",
-    "test": "npm run test -w server"
+    "test": "npm run test -w server && npm run test -w client"
   },
   "devDependencies": {
     "concurrently": "^9.1.2",
     "typescript": "^5.8.3"
   },
-  "engines": { "node": ">=22.13" }
+  "engines": {
+    "node": ">=22.13"
+  }
 }

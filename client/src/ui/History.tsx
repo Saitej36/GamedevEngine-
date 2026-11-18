@@ -1,0 +1,112 @@
+import { useEffect, useState } from 'react';
+import type { AgentRun, TaskReview } from '@pixel/shared';
+import { AGENTS } from '@pixel/shared';
+import { api } from '../api/client';
+import { useStudio } from '../state/store';
+import { Markdown, timeAgo } from './format';
+
+const DECISION_LABEL: Record<TaskReview['decision'], string> = {
+  approve: 'Director approved',
+  revise: 'Director requested revision',
+  escalated: 'Escalated to owner',
+  approved: 'Owner approved',
+  rejected: 'Owner rejected',
+  note: 'Note (before review history)',
+};
+
+/** Cost of a run as text: actual figures, or say plainly that the SDK reported none. */
+export function runCost(r: AgentRun) {
+  if (r.status === 'running') return 'running…';
+  if (r.costUsd === null) return 'cost unavailable';
+  return `$${r.costUsd.toFixed(3)}${r.costStatus === 'legacy_aggregate' ? ' (pre-tracking total)' : ''}`;
+}
+
+export const RUN_KIND_LABEL: Record<AgentRun['kind'], string> = {
+  planning: 'Director planning',
+  task: 'Task run',
+  review: 'Director review',
+  legacy: 'Run + review (pre-tracking)',
+};
+
+/** Review decisions and Agent SDK sessions for one task. */
+export function TaskHistory({ taskId, updatedAt }: { taskId: string; updatedAt: string }) {
+  const usageVersion = useStudio((s) => s.usageVersion);
+  const [data, setData] = useState<{ reviews: TaskReview[]; runs: AgentRun[] } | null>(null);
+  useEffect(() => {
+    api.taskHistory(taskId).then(setData, () => setData(null));
+  }, [taskId, updatedAt, usageVersion]);
+  if (!data) return null;
+  return (
+    <>
+      {data.reviews.length > 0 && (
+        <div className="history-block">
+          <div className="section-title">Review history</div>
+          {data.reviews.map((r) => (
+            <div key={r.id} className={`review rv-${r.decision}`}>
+              <div className="review-head">
+                <strong>{DECISION_LABEL[r.decision]}</strong>
+                {r.revision !== null && <span className="pill">rev {r.revision}</span>}
+                <span className="grow" />
+                <span className="muted small">{timeAgo(r.createdAt)}</span>
+              </div>
+              {r.feedback ? <Markdown text={r.feedback} /> : <span className="muted small">No comment</span>}
+            </div>
+          ))}
+        </div>
+      )}
+      {data.runs.length > 0 && (
+        <details className="history-block">
+          <summary>Agent sessions ({data.runs.length})</summary>
+          <RunTable runs={data.runs} showTask={false} />
+        </details>
+      )}
+    </>
+  );
+}
+
+export function RunTable({
+  runs,
+  showTask,
+  taskTitle,
+}: {
+  runs: AgentRun[];
+  showTask: boolean;
+  taskTitle?: (id: string) => string;
+}) {
+  return (
+    <div className="run-table-wrap">
+      <table className="run-table">
+        <thead>
+          <tr>
+            <th>Kind</th>
+            <th>Agent</th>
+            {showTask && <th>Task</th>}
+            <th>Cost</th>
+            <th>Session ID</th>
+            <th>Tokens in/out</th>
+          </tr>
+        </thead>
+        <tbody>
+          {runs.map((r) => (
+            <tr key={r.id}>
+              <td>{RUN_KIND_LABEL[r.kind]}</td>
+              <td>{AGENTS[r.agentId]?.name.split(' ')[0] ?? r.agentId}</td>
+              {showTask && (
+                <td className="task-cell" title={r.taskId ? (taskTitle?.(r.taskId) ?? r.taskId) : ''}>
+                  {r.taskId ? (taskTitle?.(r.taskId) ?? r.taskId) : '—'}
+                </td>
+              )}
+              <td className={r.costUsd === null ? 'muted' : ''}>{runCost(r)}</td>
+              <td>
+                <code title={r.sessionId ?? ''}>{r.sessionId ? r.sessionId.slice(0, 8) : '—'}</code>
+              </td>
+              <td className="num">
+                {r.inputTokens === null ? '—' : `${r.inputTokens.toLocaleString()} / ${(r.outputTokens ?? 0).toLocaleString()}`}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}

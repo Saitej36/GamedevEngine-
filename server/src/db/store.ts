@@ -1,6 +1,11 @@
 import type {
   AgentEvent,
   AgentId,
+  AgentRun,
+  AgentRunKind,
+  CostStatus,
+  TaskReview,
+  UsageSummary,
   AgentState,
   Approval,
   ChatMessage,
@@ -103,6 +108,58 @@ const toAgentState = (r: Row): AgentState => ({
   activity: s(r.activity),
   updatedAt: s(r.updated_at),
 });
+
+const nn = (v: unknown) => (v === null || v === undefined ? null : Number(v));
+
+const toRun = (r: Row): AgentRun => ({
+  id: s(r.id),
+  projectId: s(r.project_id),
+  taskId: sn(r.task_id),
+  agentId: s(r.agent_id) as AgentId,
+  kind: s(r.kind) as AgentRunKind,
+  sessionId: sn(r.session_id),
+  status: s(r.status) as AgentRun['status'],
+  costUsd: nn(r.cost_usd),
+  costStatus: s(r.cost_status) as CostStatus,
+  inputTokens: nn(r.input_tokens),
+  outputTokens: nn(r.output_tokens),
+  cacheReadTokens: nn(r.cache_read_tokens),
+  cacheCreationTokens: nn(r.cache_creation_tokens),
+  numTurns: nn(r.num_turns),
+  durationMs: nn(r.duration_ms),
+  model: sn(r.model),
+  error: s(r.error),
+  startedAt: s(r.started_at),
+  finishedAt: sn(r.finished_at),
+});
+
+const toReview = (r: Row): TaskReview => ({
+  id: s(r.id),
+  projectId: s(r.project_id),
+  taskId: s(r.task_id),
+  reviewer: s(r.reviewer) as TaskReview['reviewer'],
+  decision: s(r.decision) as TaskReview['decision'],
+  feedback: s(r.feedback),
+  revision: nn(r.revision),
+  runId: sn(r.run_id),
+  approvalId: sn(r.approval_id),
+  createdAt: s(r.created_at),
+});
+
+export interface RunOutcome {
+  sessionId: string | null;
+  status: Exclude<AgentRun['status'], 'running'>;
+  /** null when the SDK did not report a cost for this run. */
+  costUsd: number | null;
+  inputTokens?: number | null;
+  outputTokens?: number | null;
+  cacheReadTokens?: number | null;
+  cacheCreationTokens?: number | null;
+  numTurns?: number | null;
+  durationMs?: number | null;
+  model?: string | null;
+  error?: string;
+}
 
 const PRIORITY_ORDER = `CASE priority WHEN 'critical' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END`;
 
@@ -388,6 +445,125 @@ export class Store {
     const sql = `SELECT * FROM (SELECT *, rowid AS rid FROM events ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
       ORDER BY created_at DESC, rid DESC LIMIT ?) ORDER BY created_at, rid`;
     return (this.db.prepare(sql).all(...args) as Row[]).map(toEvent);
+  }
+
+  // -- agent runs (sessions + usage) ----------------------------------------
+  /** Record a run as soon as it starts, so its session survives a crash mid-run. */
+  startRun(r: { projectId: string; taskId: string | null; agentId: AgentId; kind: AgentRunKind }): AgentRun {
+    const id = newId('run');
+    this.db
+      .prepare(`INSERT INTO agent_runs (id, project_id, task_id, agent_id, kind, started_at) VALUES (?, ?, ?, ?, ?, ?)`)
+      .run(id, r.projectId, r.taskId, r.agentId, r.kind, nowIso());
+    return this.getRun(id);
+  }
+  setRunSession(id: string, sessionId: string) {
+    this.db.prepare(`UPDATE agent_runs SET session_id = ? WHERE id = ?`).run(sessionId, id);
+  }
+  finishRun(id: string, o: RunOutcome): AgentRun {
+    const cur = this.getRun(id);
+    this.db
+      .prepare(
+        `UPDATE agent_runs SET session_id=?, status=?, cost_usd=?, cost_status=?, input_tokens=?, output_tokens=?,
+           cache_read_tokens=?, cache_creation_tokens=?, num_turns=?, duration_ms=?, model=?, error=?, finished_at=? WHERE id=?`,
+      )
+      .run(
+        o.sessionId ?? cur.sessionId,
+        o.status,
+        o.costUsd,
+        o.costUsd === null ? 'unavailable' : 'actual',
+        o.inputTokens ?? null,
+        o.outputTokens ?? null,
+        o.cacheReadTokens ?? null,
+        o.cacheCreationTokens ?? null,
+        o.numTurns ?? null,
+        o.durationMs ?? null,
+        o.model ?? null,
+        o.error ?? '',
+        nowIso(),
+        id,
+      );
+    return this.getRun(id);
+  }
+  /** Runs that were in flight when the server stopped: their cost was never reported. */
+  interruptRunningRuns(): number {
+    const r = this.db
+      .prepare(
+        `UPDATE agent_runs SET status='interrupted', cost_status='unavailable', cost_usd=NULL,
+           error='Server stopped before the run finished', finished_at=? WHERE status='running'`,
+      )
+      .run(nowIso());
+    return Number(r.changes);
+  }
+  getRun(id: string): AgentRun {
+    const r = this.db.prepare(`SELECT * FROM agent_runs WHERE id = ?`).get(id) as Row | undefined;
+    if (!r) throw new HttpError(404, `Run ${id} not found`);
+    return toRun(r);
+  }
+  listRuns(f: { projectId?: string; taskId?: string }): AgentRun[] {
+    const where: string[] = [];
+    const args: string[] = [];
+    if (f.projectId) (where.push('project_id = ?'), args.push(f.projectId));
+    if (f.taskId) (where.push('task_id = ?'), args.push(f.taskId));
+    return (
+      this.db
+        .prepare(`SELECT * FROM agent_runs ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY started_at, rowid`)
+        .all(...args) as Row[]
+    ).map(toRun);
+  }
+  /** Known spend for a task: its own runs and the Director's reviews of it. */
+  taskKnownCost(taskId: string): number {
+    const r = this.db
+      .prepare(`SELECT COALESCE(SUM(cost_usd), 0) AS c FROM agent_runs WHERE task_id = ? AND cost_usd IS NOT NULL`)
+      .get(taskId) as Row;
+    return Number(r.c);
+  }
+  usageSummary(projectId: string): UsageSummary {
+    const runs = this.listRuns({ projectId });
+    const out: UsageSummary = {
+      knownCostUsd: 0,
+      byKind: { planning: 0, task: 0, review: 0, legacy: 0 },
+      byStatus: {
+        actual: { runs: 0, costUsd: 0 },
+        unavailable: { runs: 0, costUsd: 0 },
+        legacy_aggregate: { runs: 0, costUsd: 0 },
+      },
+      runs: runs.length,
+      runningRuns: 0,
+      tokens: { input: 0, output: 0, cacheRead: 0, cacheCreation: 0 },
+    };
+    for (const r of runs) {
+      if (r.status === 'running') {
+        out.runningRuns++;
+        continue;
+      }
+      const cost = r.costUsd ?? 0;
+      out.byStatus[r.costStatus].runs++;
+      out.byStatus[r.costStatus].costUsd += cost;
+      out.byKind[r.kind] += cost;
+      out.knownCostUsd += cost;
+      out.tokens.input += r.inputTokens ?? 0;
+      out.tokens.output += r.outputTokens ?? 0;
+      out.tokens.cacheRead += r.cacheReadTokens ?? 0;
+      out.tokens.cacheCreation += r.cacheCreationTokens ?? 0;
+    }
+    return out;
+  }
+
+  // -- review history -------------------------------------------------------
+  addReview(r: Omit<TaskReview, 'id' | 'createdAt'>): TaskReview {
+    const id = newId('rev');
+    this.db
+      .prepare(
+        `INSERT INTO task_reviews (id, project_id, task_id, reviewer, decision, feedback, revision, run_id, approval_id, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(id, r.projectId, r.taskId, r.reviewer, r.decision, r.feedback, r.revision, r.runId, r.approvalId, nowIso());
+    return toReview(this.db.prepare(`SELECT * FROM task_reviews WHERE id = ?`).get(id) as Row);
+  }
+  listReviews(taskId: string): TaskReview[] {
+    return (
+      this.db.prepare(`SELECT * FROM task_reviews WHERE task_id = ? ORDER BY created_at, rowid`).all(taskId) as Row[]
+    ).map(toReview);
   }
 
   // -- agent state ----------------------------------------------------------

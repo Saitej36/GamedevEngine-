@@ -37,6 +37,8 @@ interface StudioState {
   agents: Record<AgentId, AgentState>;
   bubbles: Partial<Record<AgentId, { emoji: string; until: number }>>;
   filesVersion: number;
+  /** Bumped whenever an agent run starts/finishes or a review is recorded. */
+  usageVersion: number;
   directorTyping: boolean;
   selectedAgent: AgentId | null;
   tab: Tab;
@@ -84,6 +86,7 @@ export const useStudio = create<StudioState>((set, get) => ({
   agents: idleAgents(),
   bubbles: {},
   filesVersion: 0,
+  usageVersion: 0,
   directorTyping: false,
   selectedAgent: null,
   tab: 'chat',
@@ -145,6 +148,9 @@ export const useStudio = create<StudioState>((set, get) => ({
         break;
       case 'milestone_updated':
         if (inProject(msg.milestone.projectId)) set({ milestones: upsert(s.milestones, msg.milestone) });
+        break;
+      case 'usage_updated':
+        if (inProject(msg.projectId)) set({ usageVersion: s.usageVersion + 1 });
         break;
       case 'files_changed':
         if (inProject(msg.projectId)) set({ filesVersion: s.filesVersion + 1 });

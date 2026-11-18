@@ -125,6 +125,7 @@ export function apiRouter(store: Store, studio: Studio, hub: Hub) {
     }),
   );
   r.get('/projects/:id/stats', wrap((req) => studio.stats(String(req.params.id))));
+  r.get('/projects/:id/usage', wrap((req) => studio.usage(String(req.params.id))));
   r.get(
     '/projects/:id/events',
     wrap((req) => store.listEvents({ projectId: String(req.params.id), limit: Math.min(1000, Number(req.query.limit ?? 300)) })),
@@ -213,6 +214,7 @@ export function apiRouter(store: Store, studio: Studio, hub: Hub) {
       return studio.updateTask(String(req.params.id), patch);
     }),
   );
+  r.get('/tasks/:id/history', wrap((req) => studio.taskHistory(String(req.params.id))));
   r.post('/tasks/:id/start', wrap((req) => studio.startTask(String(req.params.id))));
   r.post('/tasks/:id/cancel', wrap((req) => studio.cancelTask(String(req.params.id))));
   r.post('/tasks/:id/retry', wrap((req) => studio.retryTask(String(req.params.id))));

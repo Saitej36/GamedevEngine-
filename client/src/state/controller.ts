@@ -50,7 +50,7 @@ async function connect() {
   socket = new StudioSocket(
     (msg) => {
       S().apply(msg);
-      if (msg.kind === 'task_updated' || msg.kind === 'files_changed' || msg.kind === 'approval_updated') scheduleStats();
+      if (['task_updated', 'files_changed', 'approval_updated', 'usage_updated'].includes(msg.kind)) scheduleStats();
     },
     (connected) => {
       if (connected && S().projectId) void loadProject(S().projectId!); // resync after reconnects

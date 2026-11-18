@@ -1,11 +1,11 @@
 import { createSdkMcpServer, tool } from '@anthropic-ai/claude-agent-sdk';
 import { z } from 'zod';
-import type { AgentId, Approval, ProjectStats, Task, TaskPriority } from '@pixel/shared';
+import type { AgentId, AgentRunKind, Approval, ProjectStats, Task, TaskPriority, TaskReview } from '@pixel/shared';
 import { AGENTS, AGENT_IDS, TASK_STATUSES, WORKER_IDS } from '@pixel/shared';
 import { config } from '../config.js';
 import type { Store } from '../db/store.js';
 import type { Hub } from '../events/hub.js';
-import { runAgent } from '../agents/runner.js';
+import { runAgent, type RunOptions, type RunResult } from '../agents/runner.js';
 import {
   directorReviewPrompt,
   directorSystemPrompt,
@@ -62,6 +62,9 @@ export class Studio {
   // Boot / recovery
   // ---------------------------------------------------------------------------
   recover() {
+    // Runs in flight when the server stopped never reported a cost.
+    const interrupted = this.store.interruptRunningRuns();
+    if (interrupted) log.warn(`${interrupted} agent run(s) were interrupted by a restart; their cost is unavailable`);
     // Agent processes do not survive a restart: re-queue interrupted work.
     for (const t of this.store.tasksInStatus('in_progress')) {
       this.store.updateTask(t.id, { status: 'queued', error: 'Interrupted by server restart; re-queued.' });
@@ -98,6 +101,7 @@ export class Studio {
       if (t.status === 'done') byAgent[t.assignee].done++;
     }
     const done = byStatus.done;
+    const usage = this.store.usageSummary(projectId);
     return {
       totalTasks: tasks.length,
       doneTasks: done,
@@ -105,11 +109,63 @@ export class Studio {
       failedTasks: byStatus.failed,
       pendingApprovals: this.store.listApprovals(projectId).filter((a) => a.status === 'pending').length,
       fileCount: countFiles(fileTree(projectId)),
-      costUsd: this.store.listTasks(projectId).reduce((n, t) => n + t.costUsd, 0),
+      costUsd: usage.knownCostUsd,
+      usage,
       progress: tasks.length ? done / tasks.length : 0,
       byStatus,
       byAgent,
     };
+  }
+
+  // ---------------------------------------------------------------------------
+  // Agent runs: every Agent SDK session is persisted with its usage
+  // ---------------------------------------------------------------------------
+  private async tracked(kind: AgentRunKind, opts: RunOptions): Promise<RunResult & { runId: string }> {
+    const run = this.store.startRun({ projectId: opts.projectId, taskId: opts.taskId, agentId: opts.agentId, kind });
+    let res: RunResult;
+    try {
+      res = await this.runner({
+        ...opts,
+        onSession: (sessionId) => {
+          this.store.setRunSession(run.id, sessionId);
+          opts.onSession?.(sessionId);
+        },
+      });
+    } catch (e) {
+      this.store.finishRun(run.id, { sessionId: null, status: 'error', costUsd: null, error: errorMessage(e) });
+      this.hub.broadcast({ kind: 'usage_updated', projectId: opts.projectId, taskId: opts.taskId }, opts.projectId);
+      throw e;
+    }
+    this.store.finishRun(run.id, {
+      sessionId: res.sessionId,
+      status: res.ok ? 'ok' : res.aborted ? 'cancelled' : 'error',
+      costUsd: res.costAvailable ? res.costUsd : null,
+      inputTokens: res.usage?.inputTokens,
+      outputTokens: res.usage?.outputTokens,
+      cacheReadTokens: res.usage?.cacheReadTokens,
+      cacheCreationTokens: res.usage?.cacheCreationTokens,
+      numTurns: res.costAvailable ? res.turns : null,
+      durationMs: res.durationMs,
+      model: res.model,
+      error: res.ok ? '' : res.error,
+    });
+    this.hub.broadcast({ kind: 'usage_updated', projectId: opts.projectId, taskId: opts.taskId }, opts.projectId);
+    return { ...res, runId: run.id };
+  }
+
+  private review(input: Omit<TaskReview, 'id' | 'createdAt' | 'projectId'> & { projectId?: string }) {
+    const projectId = input.projectId ?? this.store.getTask(input.taskId).projectId;
+    return this.store.addReview({ ...input, projectId });
+  }
+
+  taskHistory(taskId: string) {
+    this.store.getTask(taskId);
+    return { reviews: this.store.listReviews(taskId), runs: this.store.listRuns({ taskId }) };
+  }
+
+  usage(projectId: string) {
+    this.store.getProject(projectId);
+    return { summary: this.store.usageSummary(projectId), runs: this.store.listRuns({ projectId }) };
   }
 
   // ---------------------------------------------------------------------------
@@ -246,7 +302,7 @@ export class Studio {
       });
 
       const resume = task.revisionCount > 0 ? this.store.getTaskSession(task.id) : null;
-      const res = await this.runner({
+      const res = await this.tracked('task', {
         agentId,
         projectId: task.projectId,
         taskId: task.id,
@@ -264,7 +320,7 @@ export class Studio {
         return;
       }
       const files = Array.from(new Set([...current.files, ...res.files]));
-      const costUsd = current.costUsd + res.costUsd;
+      const costUsd = this.costOf(current);
 
       if (!res.ok) {
         this.failTask(current.id, res.error || 'Unknown error', { files, costUsd, result: res.text });
@@ -332,11 +388,17 @@ export class Studio {
       });
       return;
     }
-    this.complete(id, note);
+    this.complete(id);
   }
 
-  private complete(id: string, note: string) {
-    const t = this.pushTask(this.store.updateTask(id, { status: 'done', completedAt: nowIso(), feedback: note }));
+  /** Known spend for a task: pre-v2 aggregate (if any) plus every tracked run since. */
+  private costOf(t: Task) {
+    return this.store.taskKnownCost(t.id);
+  }
+
+  private complete(id: string) {
+    // Review notes and owner comments live in task_reviews; the task record is not overwritten.
+    const t = this.pushTask(this.store.updateTask(id, { status: 'done', completedAt: nowIso() }));
     this.hub.emit('task_completed', {
       projectId: t.projectId,
       agentId: t.assignee,
@@ -385,8 +447,20 @@ export class Studio {
 
     if (approval.taskId) {
       const t = this.store.findTask(approval.taskId);
+      if (t) {
+        this.review({
+          projectId: t.projectId,
+          taskId: t.id,
+          reviewer: 'owner',
+          decision,
+          feedback: response,
+          revision: t.revisionCount,
+          runId: null,
+          approvalId: approval.id,
+        });
+      }
       if (t && t.status === 'awaiting_approval') {
-        if (decision === 'approved') this.complete(t.id, response || 'Approved by the owner');
+        if (decision === 'approved') this.complete(t.id);
         else this.sendBack(t.id, response || 'The owner rejected this deliverable. Please revise.', 'The owner');
       }
     } else {
@@ -543,7 +617,7 @@ export class Studio {
       });
       try {
         const run = (resume: string | null) =>
-          this.runner({
+          this.tracked('planning', {
             agentId: 'director',
             projectId,
             taskId: null,
@@ -590,7 +664,7 @@ export class Studio {
         status: 'reading',
       });
       const out: { decision?: ReviewDecision } = {};
-      const res = await this.runner({
+      const res = await this.tracked('review', {
         agentId: 'director',
         projectId: task.projectId,
         taskId,
@@ -603,15 +677,34 @@ export class Studio {
       });
       const fresh = this.store.findTask(taskId);
       if (!fresh || fresh.status !== 'in_review') return;
-      this.store.updateTask(taskId, { costUsd: fresh.costUsd + res.costUsd });
+      this.pushTask(this.store.updateTask(taskId, { costUsd: this.costOf(fresh) }));
 
       if (!res.ok && !out.decision) {
         // Review infrastructure failed: don't block the pipeline on it; escalate to the owner instead.
-        this.store.updateTask(taskId, { feedback: `Director review failed: ${res.error}` });
+        this.review({
+          projectId: fresh.projectId,
+          taskId,
+          reviewer: 'director',
+          decision: 'escalated',
+          feedback: `Director review failed: ${res.error}`,
+          revision: fresh.revisionCount,
+          runId: res.runId,
+          approvalId: null,
+        });
         this.finalizeWithOwner(taskId, `The Director could not complete the review (${truncate(res.error, 200)}). Please check the deliverable.`);
         return;
       }
       const decision = out.decision ?? { decision: 'approve' as const, feedback: truncate(res.text, 500) || 'Approved.' };
+      this.review({
+        projectId: fresh.projectId,
+        taskId,
+        reviewer: 'director',
+        decision: decision.decision,
+        feedback: decision.feedback,
+        revision: fresh.revisionCount,
+        runId: res.runId,
+        approvalId: null,
+      });
       const msg = this.store.addChat({
         projectId: task.projectId,
         role: 'director',
@@ -623,7 +716,6 @@ export class Studio {
       if (decision.decision === 'approve') {
         this.finalize(taskId, decision.feedback);
       } else if (fresh.revisionCount >= config.maxRevisions) {
-        this.store.updateTask(taskId, { feedback: decision.feedback });
         this.finalizeWithOwner(
           taskId,
           `After ${fresh.revisionCount} revisions the Director still requests changes:\n\n${decision.feedback}\n\nApprove to accept as-is, or reject with guidance for another revision.`,

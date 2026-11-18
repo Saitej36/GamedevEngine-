@@ -28,13 +28,21 @@ export interface RunOptions {
   effort?: Options['effort'];
   /** Status used while the model is thinking/writing text (default "working"). */
   thinkingStatus?: AgentStatus;
+  /** Called as soon as the SDK announces the session id (before the run finishes). */
+  onSession?: (sessionId: string) => void;
 }
 
 export interface RunResult {
   ok: boolean;
   sessionId: string | null;
   text: string;
+  /** Cost reported by the SDK result message; 0 when `costAvailable` is false. */
   costUsd: number;
+  /** False when the run ended without a result message (crash, abort), so its cost is unknown. */
+  costAvailable: boolean;
+  usage: { inputTokens: number; outputTokens: number; cacheReadTokens: number; cacheCreationTokens: number } | null;
+  durationMs: number | null;
+  model: string | null;
   turns: number;
   files: string[];
   error: string;
@@ -137,6 +145,10 @@ export async function runAgent(o: RunOptions): Promise<RunResult> {
     sessionId: null,
     text: '',
     costUsd: 0,
+    costAvailable: false,
+    usage: null,
+    durationMs: null,
+    model: null,
     turns: 0,
     files: [],
     error: '',
@@ -152,6 +164,12 @@ export async function runAgent(o: RunOptions): Promise<RunResult> {
     for await (const msg of q as AsyncIterable<SDKMessage>) {
       if (msg.type === 'system' && msg.subtype === 'init') {
         result.sessionId = msg.session_id;
+        result.model = msg.model ?? null;
+        try {
+          o.onSession?.(msg.session_id);
+        } catch (e) {
+          log.warn('onSession callback failed', e);
+        }
       } else if (msg.type === 'assistant') {
         if (msg.parent_tool_use_id) continue;
         for (const block of msg.message.content) {
@@ -192,8 +210,18 @@ export async function runAgent(o: RunOptions): Promise<RunResult> {
           hub.broadcast({ kind: 'files_changed', projectId: o.projectId }, o.projectId);
         }
       } else if (msg.type === 'result') {
+        result.costAvailable = typeof msg.total_cost_usd === 'number';
         result.costUsd = msg.total_cost_usd ?? 0;
         result.turns = msg.num_turns;
+        result.durationMs = msg.duration_ms;
+        result.usage = {
+          inputTokens: msg.usage?.input_tokens ?? 0,
+          outputTokens: msg.usage?.output_tokens ?? 0,
+          cacheReadTokens: msg.usage?.cache_read_input_tokens ?? 0,
+          cacheCreationTokens: msg.usage?.cache_creation_input_tokens ?? 0,
+        };
+        const models = Object.keys(msg.modelUsage ?? {});
+        if (models.length) result.model = models.join(', ');
         result.sessionId = msg.session_id ?? result.sessionId;
         if (msg.subtype === 'success' && !msg.is_error) {
           result.ok = true;

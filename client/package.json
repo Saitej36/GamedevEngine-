@@ -7,19 +7,24 @@
     "dev": "vite",
     "build": "tsc --noEmit -p . && vite build",
     "preview": "vite preview",
-    "typecheck": "tsc --noEmit -p ."
+    "typecheck": "tsc --noEmit -p . && tsc --noEmit -p test",
+    "test": "TSX_TSCONFIG_PATH=test/tsconfig.json node --test --import tsx test/*.test.tsx"
   },
   "dependencies": {
     "@pixel/shared": "0.1.0",
     "phaser": "3.90.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
+    "react-markdown": "10.1.0",
+    "remark-gfm": "4.0.1",
     "zustand": "^5.0.5"
   },
   "devDependencies": {
     "@types/react": "^19.1.6",
     "@types/react-dom": "^19.1.5",
     "@vitejs/plugin-react": "^4.5.0",
-    "vite": "^6.3.5"
+    "vite": "^6.3.5",
+    "tsx": "^4.19.4",
+    "@types/node": "^22.15.0"
   }
 }

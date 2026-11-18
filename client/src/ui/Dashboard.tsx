@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
-import type { Milestone } from '@pixel/shared';
+import type { AgentRun, Milestone, UsageSummary } from '@pixel/shared';
+import { api } from '../api/client';
+import { RunTable } from './History';
 import { AGENTS, WORKER_IDS } from '@pixel/shared';
 import { currentProject, useStudio } from '../state/store';
 import { actions } from '../state/controller';
@@ -28,7 +30,8 @@ export function Dashboard() {
   const progress = live.length ? done / live.length : 0;
   const active = live.filter((t) => ['in_progress', 'in_review', 'revision'].includes(t.status)).length;
   const pending = approvals.filter((a) => a.status === 'pending').length;
-  const cost = tasks.reduce((n, t) => n + t.costUsd, 0);
+  // Live: every Agent SDK run (planning, tasks, reviews). Demo: no real spend.
+  const cost = stats?.usage.knownCostUsd ?? tasks.reduce((n, t) => n + t.costUsd, 0);
   const open = (path: string) => useStudio.getState().set({ tab: 'files', openFile: path });
 
   return (
@@ -92,6 +95,8 @@ export function Dashboard() {
           <Tile label="AI spend" value={`$${cost.toFixed(2)}`} />
         </div>
       </div>
+
+      {mode === 'live' && <UsageCard projectId={project.id} />}
 
       <div className="card">
         <div className="section-title">Milestones</div>
@@ -158,6 +163,56 @@ function Tile({ label, value, tone }: { label: string; value: string | number; t
     <div className={`tile ${tone ?? ''}`}>
       <div className="tile-value">{value}</div>
       <div className="tile-label">{label}</div>
+    </div>
+  );
+}
+
+function UsageCard({ projectId }: { projectId: string }) {
+  const usageVersion = useStudio((s) => s.usageVersion);
+  const tasks = useStudio((s) => s.tasks);
+  const [data, setData] = useState<{ summary: UsageSummary; runs: AgentRun[] } | null>(null);
+  useEffect(() => {
+    api.usage(projectId).then(setData, () => setData(null));
+  }, [projectId, usageVersion]);
+  if (!data) return null;
+  const u = data.summary;
+  const title = (id: string) => tasks.find((t) => t.id === id)?.title ?? id;
+  const rows: [string, number][] = [
+    ['Director planning', u.byKind.planning],
+    ['Specialist tasks', u.byKind.task],
+    ['Director reviews', u.byKind.review],
+  ];
+  if (u.byStatus.legacy_aggregate.runs) rows.push(['Before per-run tracking', u.byKind.legacy]);
+  return (
+    <div className="card">
+      <div className="section-title">AI usage</div>
+      <div className="usage-rows">
+        {rows.map(([label, v]) => (
+          <div key={label} className="usage-row">
+            <span>{label}</span>
+            <span className="num">${v.toFixed(3)}</span>
+          </div>
+        ))}
+        <div className="usage-row total">
+          <span>Known total</span>
+          <span className="num">${u.knownCostUsd.toFixed(3)}</span>
+        </div>
+      </div>
+      <div className="muted small usage-notes">
+        {u.byStatus.actual.runs} run{u.byStatus.actual.runs === 1 ? '' : 's'} with actual SDK cost
+        {u.byStatus.legacy_aggregate.runs > 0 && ` · ${u.byStatus.legacy_aggregate.runs} pre-tracking total(s), not split by run`}
+        {u.byStatus.unavailable.runs > 0 && ` · ${u.byStatus.unavailable.runs} run(s) with cost unavailable (not included)`}
+        {u.runningRuns > 0 && ` · ${u.runningRuns} running`}
+        {' · '}
+        {u.tokens.input.toLocaleString()} in / {u.tokens.output.toLocaleString()} out tokens
+        {u.tokens.cacheRead > 0 && ` · ${u.tokens.cacheRead.toLocaleString()} cache reads`}
+      </div>
+      {data.runs.length > 0 && (
+        <details>
+          <summary>Agent sessions ({data.runs.length})</summary>
+          <RunTable runs={data.runs} showTask taskTitle={title} />
+        </details>
+      )}
     </div>
   );
 }
