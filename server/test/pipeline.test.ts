@@ -151,3 +151,25 @@ test('attribution: startup repair removes files outside the assignee folders and
   assert.deepEqual(store.getTask(t.id).files, ['assets/hero.svg', 'docs/art/ART_BIBLE.md']);
   assert.equal(studio.repairFileAttribution(), 0);
 });
+
+test('audit: calls a tool rejects before the guard runs are recorded as tool_rejected', async () => {
+  const { ToolAuditTracker } = await import('../src/agents/runner.js');
+  const root = path.join(TMP, 'ws_audit2');
+  fs.mkdirSync(root, { recursive: true });
+  const records: { tool: string; decision: string; path: string | null; reason: string }[] = [];
+  const t = new ToolAuditTracker(root, (c) => records.push(c));
+  // Normal call: guard hook sees it, then the result arrives.
+  t.toolUse('a', 'Read', { file_path: path.join(root, 'x.md') });
+  t.hook({ toolUseId: 'a', tool: 'Read', path: 'x.md', detail: '', decision: 'allow', reason: '' });
+  t.toolResult('a', false, 'ok');
+  // Rejected by the tool's own validation: no hook call, error result (as seen live for studio.db).
+  t.toolUse('b', 'Read', { file_path: '/srv/data/studio.db' });
+  t.toolResult('b', true, [{ type: 'text', text: 'This tool cannot read binary files.' }]);
+  assert.deepEqual(
+    records.map((r) => [r.tool, r.decision, r.path, r.reason]),
+    [
+      ['Read', 'allow', 'x.md', ''],
+      ['Read', 'tool_rejected', '/srv/data/studio.db', 'This tool cannot read binary files.'],
+    ],
+  );
+});

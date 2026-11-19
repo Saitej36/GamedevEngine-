@@ -130,7 +130,10 @@ export function apiRouter(store: Store, studio: Studio, hub: Hub) {
     '/projects/:id/tool-calls',
     wrap((req) => {
       const d = req.query.decision;
-      return studio.toolCalls(String(req.params.id), d === 'allow' || d === 'deny' ? d : undefined);
+      return studio.toolCalls(
+        String(req.params.id),
+        d === 'allow' || d === 'deny' || d === 'tool_rejected' ? d : undefined,
+      );
     }),
   );
   r.get(

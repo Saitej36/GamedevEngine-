@@ -1,6 +1,6 @@
 import { createSdkMcpServer, tool } from '@anthropic-ai/claude-agent-sdk';
 import { z } from 'zod';
-import type { AgentId, AgentRunKind, Approval, ProjectStats, Task, TaskPriority, TaskReview } from '@pixel/shared';
+import type { AgentId, AgentRunKind, Approval, ProjectStats, Task, TaskPriority, TaskReview, ToolCallRecord } from '@pixel/shared';
 import { AGENTS, AGENT_IDS, TASK_STATUSES, WORKER_IDS } from '@pixel/shared';
 import { config } from '../config.js';
 import type { Store } from '../db/store.js';
@@ -201,7 +201,7 @@ export class Studio {
     return { reviews: this.store.listReviews(taskId), runs: this.store.listRuns({ taskId }) };
   }
 
-  toolCalls(projectId: string, decision?: 'allow' | 'deny') {
+  toolCalls(projectId: string, decision?: ToolCallRecord['decision']) {
     this.store.getProject(projectId);
     return this.store.listToolCalls({ projectId, decision });
   }

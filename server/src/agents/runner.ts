@@ -41,8 +41,48 @@ export interface ToolCallAudit {
   tool: string;
   path: string | null;
   detail: string;
-  decision: 'allow' | 'deny';
+  decision: 'allow' | 'deny' | 'tool_rejected';
   reason: string;
+}
+
+/**
+ * Makes sure every tool call ends up in the audit log. Calls normally pass the guard hook first; a tool that
+ * rejects its input during its own validation (before hooks run) only shows up as a tool_use block followed
+ * by an error tool_result, so those are recorded here as `tool_rejected`.
+ */
+export class ToolAuditTracker {
+  private seenByHook = new Set<string>();
+  private uses = new Map<string, { tool: string; input: Record<string, unknown> }>();
+  constructor(
+    private root: string,
+    private record: (c: ToolCallAudit) => void,
+  ) {}
+  hook(c: ToolCallAudit) {
+    if (c.toolUseId) this.seenByHook.add(c.toolUseId);
+    this.record(c);
+  }
+  toolUse(id: string, tool: string, input: Record<string, unknown>) {
+    this.uses.set(id, { tool, input });
+  }
+  toolResult(id: string, isError: boolean, content: unknown) {
+    const use = this.uses.get(id);
+    this.uses.delete(id);
+    if (!use || this.seenByHook.has(id)) return;
+    this.record({
+      toolUseId: id,
+      tool: use.tool,
+      ...auditFields(this.root, use.input),
+      decision: 'tool_rejected',
+      reason: truncate(resultText(content) || (isError ? 'Tool returned an error before the studio guard ran' : 'Completed without passing the studio guard'), 300),
+    });
+  }
+}
+
+function resultText(content: unknown): string {
+  if (typeof content === 'string') return content;
+  if (Array.isArray(content))
+    return content.map((c) => (c && typeof c === 'object' && 'text' in c ? String((c as { text: unknown }).text) : '')).join(' ');
+  return '';
 }
 
 /** Salient, truncated description of a tool input for the audit log. */
@@ -125,22 +165,25 @@ export async function runAgent(o: RunOptions): Promise<RunResult> {
   const pendingFiles = new Map<string, { path: string; tool: string }>();
   const emitted = new Set<string>();
   const hub = runtime.hub;
+  const audit = new ToolAuditTracker(root, (c) => {
+    try {
+      o.onToolCall?.(c);
+    } catch (e) {
+      log.warn('tool-call audit failed', e);
+    }
+  });
 
   const guardHook: HookCallback = async (input) => {
     if (input.hook_event_name !== 'PreToolUse') return {};
     const toolInput = (input.tool_input ?? {}) as Record<string, unknown>;
     const d = checkToolUse(agent, root, input.tool_name, toolInput, mcpTools);
-    try {
-      o.onToolCall?.({
-        toolUseId: input.tool_use_id ?? null,
-        tool: input.tool_name,
-        ...auditFields(root, toolInput),
-        decision: d.allow ? 'allow' : 'deny',
-        reason: d.allow ? '' : d.reason,
-      });
-    } catch (e) {
-      log.warn('tool-call audit failed', e);
-    }
+    audit.hook({
+      toolUseId: input.tool_use_id ?? null,
+      tool: input.tool_name,
+      ...auditFields(root, toolInput),
+      decision: d.allow ? 'allow' : 'deny',
+      reason: d.allow ? '' : d.reason,
+    });
     if (d.allow) return {};
     log.warn(`[guard] ${o.agentId} denied ${input.tool_name}: ${d.reason}`);
     return {
@@ -213,6 +256,7 @@ export async function runAgent(o: RunOptions): Promise<RunResult> {
             });
           } else if (block.type === 'tool_use') {
             const input = (block.input ?? {}) as Record<string, unknown>;
+            audit.toolUse(block.id, block.name, input);
             const status = statusForTool(block.name);
             working(describeTool(block.name, input, root), status, { kind: 'tool', tool: block.name });
             if (FILE_TOOLS.has(block.name)) {
@@ -226,6 +270,7 @@ export async function runAgent(o: RunOptions): Promise<RunResult> {
         if (!Array.isArray(content)) continue;
         for (const block of content) {
           if (block.type !== 'tool_result') continue;
+          audit.toolResult(block.tool_use_id, !!block.is_error, block.content);
           try {
             o.onToolResult?.(block.tool_use_id, block.is_error ? 'error' : 'ok');
           } catch (e) {

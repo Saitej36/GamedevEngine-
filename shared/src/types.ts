@@ -174,7 +174,12 @@ export interface ToolCallRecord {
   path: string | null;
   /** Command, pattern or other salient input (truncated). */
   detail: string;
-  decision: 'allow' | 'deny';
+  /**
+   * allow / deny — the studio guard's decision.
+   * tool_rejected — the tool refused the call on its own validation before the guard ran
+   * (e.g. "cannot read binary files"); `reason` holds the tool's message.
+   */
+  decision: 'allow' | 'deny' | 'tool_rejected';
   reason: string;
   /** Result reported back to the agent: ok | error; null when no result was seen (denied or interrupted). */
   outcome: 'ok' | 'error' | null;

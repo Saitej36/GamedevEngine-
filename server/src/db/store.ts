@@ -625,7 +625,7 @@ export class Store {
   setToolOutcome(toolUseId: string, outcome: 'ok' | 'error') {
     this.db.prepare(`UPDATE tool_calls SET outcome = ? WHERE tool_use_id = ? AND decision = 'allow'`).run(outcome, toolUseId);
   }
-  listToolCalls(f: { projectId?: string; runId?: string; taskId?: string; decision?: 'allow' | 'deny' }): ToolCallRecord[] {
+  listToolCalls(f: { projectId?: string; runId?: string; taskId?: string; decision?: ToolCallRecord['decision'] }): ToolCallRecord[] {
     const where: string[] = [];
     const args: string[] = [];
     if (f.projectId) (where.push('project_id = ?'), args.push(f.projectId));
