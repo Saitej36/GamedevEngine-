@@ -68,6 +68,32 @@ The Director can also put any decision in front of you with `request_approval`; 
   approving a task never overwrites the Director's notes.
 - Migration v2 backfills these tables from existing data without modifying any existing row.
 
+## Knowledge system
+
+Agent identity (`shared/src/roster.ts`), execution (`server/src/agents/runner.ts`) and knowledge (`knowledge/`) are
+separate. Knowledge has five layers:
+
+| Layer | Where | Trust |
+|---|---|---|
+| Shared studio standards | `knowledge/packs/studio-core` | studio-authored |
+| Role knowledge (design, art, engineering, production, QA, direction) | `knowledge/packs/*-craft` | studio-authored |
+| Tool docs (Unity, Unreal, Phaser, vanilla web) | `knowledge/packs/tool-*` — internal summaries, loaded only for tasks that target that tool | studio-authored |
+| Reusable skills (Purpose · Required inputs · Workflow · Expected output · Quality checklist · Failure conditions) | `knowledge/skills/<role>/*.md`, validated at load | studio-authored |
+| External sources: GitHub repos/example projects (selected paths only), documentation pages (listed URLs only), Markdown, PDFs, internal docs | database, registered in the **Knowledge** library | official / community / internal, with version, license, retrieval date |
+| Project knowledge | the project's own `docs/`, `design/`, `qa/` Markdown | project |
+
+At the start of every run the orchestrator chooses a skill (assigned by the Director via `create_task(skill=…)`,
+or matched from the task text), runs a BM25 search limited to the packs assigned to that department plus the
+engine detected in the task/brief, and injects at most ~1,800 words: the skill as instructions and the references
+inside `<reference>` envelopes marked as data. Agents can search further with the read-only
+`mcp__knowledge__search_knowledge` / `read_knowledge` tools. Every skill, injected reference, search and read is
+recorded per run (`GET /api/tasks/:id/knowledge`) and shown under **Knowledge used** on the task card. External
+text can never become a skill or change permissions; forged envelope tags are neutralised. Format rules:
+`knowledge/FORMAT.md`.
+
+Fetching GitHub folders needs the GitHub API (set `GITHUB_TOKEN` for higher limits); without it only explicitly
+listed files are fetched over raw URLs. Behind an HTTP proxy, start the server with `NODE_USE_ENV_PROXY=1`.
+
 ## Real-time events → animations
 
 The server emits `task_created`, `task_assigned`, `task_started`, `agent_working`, `file_created`,

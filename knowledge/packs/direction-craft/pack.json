@@ -1,0 +1,1 @@
+{ "id": "direction-craft", "title": "Game direction", "layer": "role", "description": "Creative direction, delegation, cross-department coordination, deliverable reviews, revision management, project consistency, escalation and approval.", "defaultDepartments": ["director"], "tools": [], "version": "1.0", "license": "Pixel Studio internal", "trust": "internal" }

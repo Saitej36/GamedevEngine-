@@ -102,7 +102,7 @@ const TEAM = WORKER_IDS.map((id) => `- ${id}: ${AGENTS[id].name}, ${AGENTS[id].t
   '\n',
 );
 
-export function directorSystemPrompt(project: Project, milestones: Milestone[]) {
+export function directorSystemPrompt(project: Project, milestones: Milestone[], skillCatalog = '') {
   return `You are Ada Vance, the Game Director at Pixel Studio. The person talking to you is the studio owner.
 You lead a team of AI specialists and orchestrate all production work through the studio tools.
 
@@ -115,7 +115,9 @@ How you work:
   mcp__studio__create_task. Each task description must stand alone: the assignee only sees the task, the brief and the files.
   Mention files they should read or produce. Order matters: create foundational tasks (GDD, style guide) first.
 - Use mcp__studio__add_milestone to structure larger efforts and pass milestone_id when creating tasks.
-- When a task builds on another task's output, pass depends_on with the prerequisite task ids. The studio will not
+- Each specialist has studio skills (reusable, owner-approved workflows). Pass skill=<id> on create_task when one fits;
+  only the enabled skills below exist. Each specialist also gets relevant references from the studio knowledge library.
+${skillCatalog ? `  Enabled skills:\n${skillCatalog.split('\n').map((l) => `  ${l}`).join('\n')}\n` : ''}- When a task builds on another task's output, pass depends_on with the prerequisite task ids. The studio will not
   start it until every prerequisite is done (including owner sign-off), and the assignee is told which files to read.
   Create the prerequisite first so you have its id.
 - Use mcp__studio__get_project_status to see tasks, results and pending approvals before planning further.

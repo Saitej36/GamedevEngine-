@@ -11,6 +11,7 @@ import { Dashboard } from './ui/Dashboard';
 import { Timeline } from './ui/Timeline';
 import { AgentProfile } from './ui/AgentProfile';
 import { ErrorBoundary } from './ui/ErrorBoundary';
+import { KnowledgeLibrary } from './ui/KnowledgeLibrary';
 
 export function App() {
   const tab = useStudio((s) => s.tab);
@@ -18,6 +19,7 @@ export function App() {
   const projectId = useStudio((s) => s.projectId);
   const selected = useStudio((s) => s.selectedAgent);
   const [showNew, setShowNew] = useState(false);
+  const [showKnowledge, setShowKnowledge] = useState(false);
 
   useEffect(() => {
     void boot();
@@ -25,7 +27,7 @@ export function App() {
 
   return (
     <div className="app">
-      <TopBar onNewProject={() => setShowNew(true)} />
+      <TopBar onNewProject={() => setShowNew(true)} onKnowledge={() => setShowKnowledge(true)} />
       <main className="main">
         <section className="stage">
           <ErrorBoundary label="Office">
@@ -61,6 +63,11 @@ export function App() {
         </section>
       </main>
       {showNew && <NewProjectModal onClose={() => setShowNew(false)} />}
+      {showKnowledge && (
+        <ErrorBoundary label="Knowledge Library">
+          <KnowledgeLibrary onClose={() => setShowKnowledge(false)} />
+        </ErrorBoundary>
+      )}
       <Toasts />
     </div>
   );

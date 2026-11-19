@@ -80,6 +80,8 @@ export interface Task {
   costUsd: number;
   /** Tasks that must be done before this one may start. */
   dependsOn: string[];
+  /** Skill the assignee must follow (null: chosen automatically from the task text). */
+  skillId: string | null;
   createdBy: AgentId | 'user';
   createdAt: string;
   updatedAt: string;

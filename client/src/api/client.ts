@@ -1,4 +1,9 @@
 import type {
+  KnowledgeHit,
+  KnowledgePack,
+  KnowledgeSource,
+  KnowledgeUsage,
+  Skill,
   AgentRun,
   TaskReview,
   UsageSummary,
@@ -61,6 +66,7 @@ export interface NewTaskInput {
   priority: TaskPriority;
   milestoneId?: string | null;
   requiresApproval?: boolean;
+  skillId?: string | null;
 }
 
 export const api = {
@@ -96,6 +102,22 @@ export const api = {
   },
   writeFile: (projectId: string, path: string, content: string) => req('PUT', `/projects/${projectId}/file`, { path, content }),
   agent: (id: AgentId) => req<AgentDetail>('GET', `/agents/${id}`),
+  knowledge: () => req<{ packs: KnowledgePack[]; skills: Skill[]; sources: KnowledgeSource[]; errors: string[] }>('GET', '/knowledge'),
+  knowledgeDoc: (id: string) => req<{ title: string; body: string; packId: string }>('GET', `/knowledge/docs/${encodeURIComponent(id)}`),
+  knowledgeSkill: (id: string) => req<Skill & { body: string }>('GET', `/knowledge/skills/${encodeURIComponent(id)}`),
+  setSkillEnabled: (id: string, enabled: boolean) => req<Skill>('PUT', `/knowledge/skills/${encodeURIComponent(id)}`, { enabled }),
+  setPackDepartments: (id: string, departments: AgentId[]) => req<KnowledgePack>('PUT', `/knowledge/packs/${encodeURIComponent(id)}/departments`, { departments }),
+  knowledgeSearch: (agent: AgentId, q: string, projectId?: string | null) =>
+    req<{ tools: string[]; skill: Skill | null; hits: KnowledgeHit[] }>(
+      'GET',
+      `/knowledge/search?agent=${agent}&q=${encodeURIComponent(q)}${projectId ? `&projectId=${projectId}` : ''}`,
+    ),
+  addSource: (body: Record<string, unknown>) => req<KnowledgeSource>('POST', '/knowledge/sources', body),
+  updateSource: (id: string, patch: Partial<KnowledgeSource>) => req<KnowledgeSource>('PATCH', `/knowledge/sources/${id}`, patch),
+  refreshSource: (id: string) => req<KnowledgeSource>('POST', `/knowledge/sources/${id}/refresh`),
+  deleteSource: (id: string) => req('DELETE', `/knowledge/sources/${id}`),
+  sourceDoc: (id: string, docId: string) => req<{ path: string; title: string; content: string }>('GET', `/knowledge/sources/${id}/docs/${docId}`),
+  taskKnowledge: (id: string) => req<KnowledgeUsage[]>('GET', `/tasks/${id}/knowledge`),
   taskHistory: (id: string) => req<{ reviews: TaskReview[]; runs: AgentRun[] }>('GET', `/tasks/${id}/history`),
   usage: (projectId: string) => req<{ summary: UsageSummary; runs: AgentRun[] }>('GET', `/projects/${projectId}/usage`),
 };

@@ -1,0 +1,1 @@
+{ "id": "production-craft", "title": "Production management", "layer": "role", "description": "Agile and Scrum, sprint planning, milestones, resource allocation, risk, dependencies, scope and delivery.", "defaultDepartments": ["producer", "director"], "tools": [], "version": "1.0", "license": "Pixel Studio internal", "trust": "internal" }

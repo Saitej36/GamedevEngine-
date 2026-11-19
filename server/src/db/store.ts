@@ -62,6 +62,7 @@ const toTask = (r: Row): Task => ({
   error: s(r.error),
   costUsd: Number(r.cost_usd),
   dependsOn: s(r.deps) ? s(r.deps).split(',') : [],
+  skillId: sn(r.skill_id),
   createdBy: s(r.created_by) as Task['createdBy'],
   createdAt: s(r.created_at),
   updatedAt: s(r.updated_at),
@@ -198,6 +199,7 @@ export interface NewTask {
   milestoneId?: string | null;
   requiresApproval?: boolean;
   dependsOn?: string[];
+  skillId?: string | null;
   createdBy: AgentId | 'user';
 }
 
@@ -310,8 +312,8 @@ export class Store {
     const ts = nowIso();
     this.db
       .prepare(
-        `INSERT INTO tasks (id, project_id, milestone_id, title, description, assignee, priority, requires_approval, created_by, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO tasks (id, project_id, milestone_id, title, description, assignee, priority, requires_approval, created_by, created_at, updated_at, skill_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         id,
@@ -325,6 +327,7 @@ export class Store {
         t.createdBy,
         ts,
         ts,
+        t.skillId ?? null,
       );
     const dep = this.db.prepare(`INSERT OR IGNORE INTO task_dependencies (task_id, depends_on) VALUES (?, ?)`);
     for (const d of t.dependsOn ?? []) dep.run(id, d);

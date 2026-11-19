@@ -7,6 +7,8 @@ import type { Store } from '../db/store.js';
 import type { Hub } from '../events/hub.js';
 import { runAgent, type RunOptions, type RunResult } from '../agents/runner.js';
 import { isWritable } from '../agents/guard.js';
+import { detectTools, type KnowledgeService } from '../knowledge/service.js';
+import type { KnowledgeHit, Skill } from '@pixel/shared';
 import {
   directorReviewPrompt,
   directorSystemPrompt,
@@ -26,6 +28,14 @@ const STUDIO_TOOL_NAMES = [
 const REVIEW_TOOL = 'mcp__studio__review_task';
 
 type ReviewDecision = { decision: 'approve' | 'revise'; feedback: string };
+
+export interface PreparedKnowledge {
+  tools: string[];
+  skill: Skill | null;
+  skillHow: string;
+  hits: KnowledgeHit[];
+  query: string;
+}
 
 /** A tiny FIFO mutex: the Director is one person and handles one conversation/review at a time. */
 class Mutex {
@@ -53,6 +63,8 @@ export class Studio {
     /** Injected so tests can drive the lifecycle without calling the model. */
     private runner: typeof runAgent = runAgent,
     private isLive: () => boolean = () => config.aiMode === 'live',
+    /** Studio knowledge library; optional so lifecycle tests can run without it. */
+    public knowledge: KnowledgeService | null = null,
   ) {}
 
   get live() {
@@ -75,6 +87,52 @@ export class Studio {
     // Deliverables that were waiting for the Director's review get reviewed again.
     for (const t of this.store.tasksInStatus('in_review')) this.enqueueReview(t.id);
     this.kick();
+  }
+
+  /**
+   * Choose the skill and retrieve references for a run. Tool packs (Unity, Unreal, Phaser, web) load only when
+   * the task or project targets that stack; only packs assigned to the agent's department are searched.
+   */
+  prepareKnowledge(p: {
+    agentId: AgentId;
+    projectId: string | null;
+    taskText: string;
+    projectText?: string;
+    skillId?: string | null;
+    defaultSkillId?: string;
+  }): PreparedKnowledge | undefined {
+    const k = this.knowledge;
+    if (!k) return undefined;
+    const tools = detectTools(`${p.taskText}\n${p.projectText ?? ''}`);
+    let skill: Skill | null = null;
+    let skillHow = '';
+    if (p.skillId) {
+      const s = k.skill(p.skillId);
+      if (s && s.enabled && s.role === p.agentId) (skill = s), (skillHow = 'assigned by the Director');
+      else log.warn(`skill ${p.skillId} is not available to ${p.agentId}; selecting automatically`);
+    }
+    if (!skill && p.defaultSkillId) {
+      const s = k.skill(p.defaultSkillId);
+      if (s && s.enabled && s.role === p.agentId) (skill = s), (skillHow = 'default for this kind of run');
+    }
+    if (!skill) {
+      skill = k.selectSkill(p.agentId, p.taskText);
+      if (skill) skillHow = 'selected automatically from the task text';
+    }
+    const query = `${p.taskText}\n${skill ? `${skill.title} ${skill.triggers.join(' ')}` : ''}`;
+    const hits = k.retrieve({ agentId: p.agentId, query, projectId: p.projectId, tools, preferPacks: skill?.packs });
+    return { tools, skill, skillHow, hits, query: truncate(query, 300) };
+  }
+
+  /** Validate a skill requested for a task: it must exist, be enabled and belong to the assignee's role. */
+  private checkSkill(skillId: string | null | undefined, assignee: AgentId) {
+    if (!skillId) return null;
+    if (!this.knowledge) throw new HttpError(400, 'The knowledge library is not loaded');
+    const s = this.knowledge.skill(skillId);
+    if (!s) throw new HttpError(400, `Unknown skill ${skillId}`);
+    if (s.role !== assignee) throw new HttpError(400, `Skill ${skillId} belongs to the ${AGENTS[s.role].title}, not the ${AGENTS[assignee].title}`);
+    if (!s.enabled) throw new HttpError(400, `Skill ${skillId} is disabled by the owner`);
+    return s.id;
   }
 
   /**
@@ -141,8 +199,21 @@ export class Studio {
   // ---------------------------------------------------------------------------
   // Agent runs: every Agent SDK session is persisted with its usage
   // ---------------------------------------------------------------------------
-  private async tracked(kind: AgentRunKind, opts: RunOptions): Promise<RunResult & { runId: string }> {
+  private async tracked(kind: AgentRunKind, opts: RunOptions, know?: PreparedKnowledge): Promise<RunResult & { runId: string }> {
     const run = this.store.startRun({ projectId: opts.projectId, taskId: opts.taskId, agentId: opts.agentId, kind });
+    if (this.knowledge && know) {
+      // Record what was injected, and mount the read-only knowledge tools bound to this run.
+      const ctx = { agentId: opts.agentId, projectId: opts.projectId, taskId: opts.taskId, runId: run.id, tools: know.tools };
+      if (know.skill) this.knowledge.recordSkill(ctx, know.skill, know.skillHow);
+      for (const h of know.hits) this.knowledge.record(ctx, 'auto', h, know.query);
+      const k = this.knowledge.agentServer(ctx);
+      opts = {
+        ...opts,
+        prompt: `${opts.prompt}\n\n---\n\n${this.knowledge.renderForPrompt(know.skill, know.hits, know.tools)}`,
+        mcpServers: { ...(opts.mcpServers ?? {}), knowledge: k.server },
+        mcpTools: [...(opts.mcpTools ?? []), ...k.toolNames],
+      };
+    }
     let res: RunResult;
     try {
       res = await this.runner({
@@ -201,6 +272,20 @@ export class Studio {
     return { reviews: this.store.listReviews(taskId), runs: this.store.listRuns({ taskId }) };
   }
 
+  /** Enabled specialist skills, listed for the Director when delegating. */
+  skillCatalogText(): string {
+    if (!this.knowledge) return '';
+    return WORKER_IDS.map((id) => {
+      const skills = this.knowledge!.skillsFor(id);
+      return `- ${id}: ${skills.length ? skills.map((s) => `${s.id} (${s.summary})`).join('; ') : '(no enabled skills)'}`;
+    }).join('\n');
+  }
+
+  taskKnowledge(taskId: string) {
+    this.store.getTask(taskId);
+    return this.knowledge ? this.knowledge.usage({ taskId }) : [];
+  }
+
   toolCalls(projectId: string, decision?: ToolCallRecord['decision']) {
     this.store.getProject(projectId);
     return this.store.listToolCalls({ projectId, decision });
@@ -228,10 +313,12 @@ export class Studio {
     milestoneId?: string | null;
     requiresApproval?: boolean;
     dependsOn?: string[];
+    skillId?: string | null;
     createdBy: AgentId | 'user';
   }): Task {
     this.store.getProject(input.projectId);
     if (input.assignee === 'director') throw new HttpError(400, 'Tasks must be assigned to a specialist, not the Director');
+    input = { ...input, skillId: this.checkSkill(input.skillId, input.assignee) };
     if (input.milestoneId) this.store.getMilestone(input.milestoneId);
     const dependsOn = Array.from(new Set(input.dependsOn ?? []));
     for (const id of dependsOn) {
@@ -360,6 +447,13 @@ export class Studio {
       });
 
       const resume = task.revisionCount > 0 ? this.store.getTaskSession(task.id) : null;
+      const know = this.prepareKnowledge({
+        agentId,
+        projectId: task.projectId,
+        taskText: `${task.title}\n${task.description}${task.feedback && task.revisionCount ? `\n${task.feedback}` : ''}`,
+        projectText: `${project.genre}\n${project.brief}`,
+        skillId: task.skillId,
+      });
       const res = await this.tracked('task', {
         agentId,
         projectId: task.projectId,
@@ -369,7 +463,7 @@ export class Studio {
         resume,
         abort,
         effort: agentId === 'programmer' ? 'high' : 'medium',
-      });
+      }, know);
       if (res.sessionId) this.store.setTaskSession(task.id, res.sessionId);
 
       const current = this.store.findTask(task.id);
@@ -579,6 +673,10 @@ export class Studio {
           priority: z.enum(['low', 'medium', 'high', 'critical']).default('medium'),
           milestone_id: z.string().optional(),
           requires_approval: z.boolean().default(false).describe('Owner must sign off the deliverable before it is done'),
+          skill: z
+            .string()
+            .optional()
+            .describe('Id of an enabled skill of the assignee (see the skills list in your instructions); omit to let the studio choose'),
           depends_on: z
             .array(z.string())
             .default([])
@@ -595,6 +693,7 @@ export class Studio {
               milestoneId: a.milestone_id ?? null,
               requiresApproval: a.requires_approval,
               dependsOn: a.depends_on,
+              skillId: a.skill ?? null,
               createdBy: 'director',
             });
             const waiting = this.store.unmetDependencies(t.id);
@@ -689,18 +788,25 @@ export class Studio {
         status: 'reading',
       });
       try {
+        const know = this.prepareKnowledge({
+          agentId: 'director',
+          projectId,
+          taskText: prompt,
+          projectText: `${project.genre}\n${project.brief}`,
+          defaultSkillId: 'plan-project',
+        });
         const run = (resume: string | null) =>
           this.tracked('planning', {
             agentId: 'director',
             projectId,
             taskId: null,
             prompt,
-            systemPrompt: directorSystemPrompt(project, this.store.listMilestones(projectId)),
+            systemPrompt: directorSystemPrompt(project, this.store.listMilestones(projectId), this.skillCatalogText()),
             resume,
             mcpServers: { studio: this.studioServer(projectId) },
             mcpTools: STUDIO_TOOL_NAMES,
             effort: 'high',
-          });
+          }, know);
         const session = this.store.getDirectorSession(projectId);
         let res = await run(session);
         if (!res.ok && session && !res.aborted) {
@@ -737,17 +843,24 @@ export class Studio {
         status: 'reading',
       });
       const out: { decision?: ReviewDecision } = {};
+      const know = this.prepareKnowledge({
+        agentId: 'director',
+        projectId: task.projectId,
+        taskText: `Review ${AGENTS[task.assignee].title} deliverable: ${task.title}\n${task.description}`,
+        projectText: `${project.genre}\n${project.brief}`,
+        defaultSkillId: 'review-deliverable',
+      });
       const res = await this.tracked('review', {
         agentId: 'director',
         projectId: task.projectId,
         taskId,
         prompt: directorReviewPrompt(task, task.result, task.files),
-        systemPrompt: directorSystemPrompt(project, this.store.listMilestones(task.projectId)),
+        systemPrompt: directorSystemPrompt(project, this.store.listMilestones(task.projectId), this.skillCatalogText()),
         mcpServers: { studio: this.studioServer(task.projectId, { taskId, out }) },
         mcpTools: [...STUDIO_TOOL_NAMES, REVIEW_TOOL],
         effort: 'medium',
         thinkingStatus: 'reading',
-      });
+      }, know);
       const fresh = this.store.findTask(taskId);
       if (!fresh || fresh.status !== 'in_review') return;
       this.pushTask(this.store.updateTask(taskId, { costUsd: this.costOf(fresh) }));

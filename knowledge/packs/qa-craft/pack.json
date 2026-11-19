@@ -1,0 +1,1 @@
+{ "id": "qa-craft", "title": "Quality assurance", "layer": "role", "description": "Functional, regression, gameplay and performance testing, bug reproduction, test automation and acceptance criteria.", "defaultDepartments": ["qa", "programmer"], "tools": [], "version": "1.0", "license": "Pixel Studio internal", "trust": "internal" }

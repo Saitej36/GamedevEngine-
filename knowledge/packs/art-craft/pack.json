@@ -1,0 +1,1 @@
+{ "id": "art-craft", "title": "Art and visual production", "layer": "role", "description": "Visual development, character and environment design, composition and colour, 2D/3D pipelines, asset specifications and visual consistency.", "defaultDepartments": ["artist", "director"], "tools": [], "version": "1.0", "license": "Pixel Studio internal", "trust": "internal" }

@@ -1,11 +1,12 @@
-import { useMemo, useState } from 'react';
-import type { AgentId, Task, TaskPriority, TaskStatus } from '@pixel/shared';
+import { useEffect, useMemo, useState } from 'react';
+import type { AgentId, Skill, Task, TaskPriority, TaskStatus } from '@pixel/shared';
 import { AGENTS, TASK_STATUS_LABEL, WORKER_IDS } from '@pixel/shared';
 import { useStudio } from '../state/store';
 import { actions } from '../state/controller';
 import { Avatar } from './Avatar';
 import { Markdown, timeAgo } from './format';
 import { TaskHistory } from './History';
+import { api } from '../api/client';
 
 const COLUMNS: { title: string; statuses: TaskStatus[] }[] = [
   { title: 'Queued', statuses: ['queued', 'revision'] },
@@ -85,6 +86,7 @@ function TaskCard({ task: t, open, onToggle }: { task: Task; open: boolean; onTo
         <span className={`pill st-${t.status}`}>{TASK_STATUS_LABEL[t.status]}</span>
         {t.revisionCount > 0 && <span className="pill">rev {t.revisionCount}</span>}
         {t.requiresApproval && <span className="pill">sign-off</span>}
+        {t.skillId && <span className="pill" title="Studio skill assigned to this task">skill: {t.skillId}</span>}
         {waitingOn.length > 0 && ['queued', 'revision'].includes(t.status) && (
           <span className="pill st-awaiting_approval" title={waitingOn.map((p) => p.title).join(', ')}>
             waiting on {waitingOn.length}
@@ -191,12 +193,19 @@ function NewTaskForm({ onDone }: { onDone: () => void }) {
   const [priority, setPriority] = useState<TaskPriority>('medium');
   const [milestoneId, setMilestoneId] = useState('');
   const [requiresApproval, setRequiresApproval] = useState(false);
+  const [skillId, setSkillId] = useState('');
+  const [skills, setSkills] = useState<Skill[]>([]);
+  const mode = useStudio((s) => s.mode);
+  useEffect(() => {
+    if (mode === 'live') api.knowledge().then((k) => setSkills(k.skills), () => setSkills([]));
+  }, [mode]);
+  const roleSkills = skills.filter((s) => s.role === assignee && s.enabled);
   return (
     <form
       className="card form"
       onSubmit={async (e) => {
         e.preventDefault();
-        await actions.createTask({ title, description, assignee, priority, milestoneId: milestoneId || null, requiresApproval });
+        await actions.createTask({ title, description, assignee, priority, milestoneId: milestoneId || null, requiresApproval, skillId: skillId || null });
         onDone();
       }}
     >
@@ -211,7 +220,13 @@ function NewTaskForm({ onDone }: { onDone: () => void }) {
       <div className="row">
         <label>
           Assignee
-          <select value={assignee} onChange={(e) => setAssignee(e.target.value as AgentId)}>
+          <select
+            value={assignee}
+            onChange={(e) => {
+              setAssignee(e.target.value as AgentId);
+              setSkillId('');
+            }}
+          >
             {WORKER_IDS.map((id) => (
               <option key={id} value={id}>
                 {AGENTS[id].name} — {AGENTS[id].title}
@@ -224,6 +239,17 @@ function NewTaskForm({ onDone }: { onDone: () => void }) {
           <select value={priority} onChange={(e) => setPriority(e.target.value as TaskPriority)}>
             {(['low', 'medium', 'high', 'critical'] as const).map((p) => (
               <option key={p}>{p}</option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Skill
+          <select value={skillId} onChange={(e) => setSkillId(e.target.value)}>
+            <option value="">Choose automatically</option>
+            {roleSkills.map((s) => (
+              <option key={s.id} value={s.id} title={s.summary}>
+                {s.id}
+              </option>
             ))}
           </select>
         </label>

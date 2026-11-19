@@ -36,7 +36,10 @@ const wrap =
 
 export function apiRouter(store: Store, studio: Studio, hub: Hub) {
   const r = express.Router();
-  r.use(express.json({ limit: '2mb' }));
+  // PDF uploads to the knowledge library arrive base64-encoded; every other route keeps the small limit.
+  const smallJson = express.json({ limit: '2mb' });
+  const uploadJson = express.json({ limit: '30mb' });
+  r.use((req, res, next) => (req.method === 'POST' && req.path === '/knowledge/sources' ? uploadJson : smallJson)(req, res, next));
 
   r.get('/health', (_req, res) => {
     res.json({ ok: true });
@@ -199,6 +202,7 @@ export function apiRouter(store: Store, studio: Studio, hub: Hub) {
         milestoneId: str(b, 'milestoneId') || null,
         requiresApproval: Boolean(b.requiresApproval),
         dependsOn: Array.isArray(b.dependsOn) ? b.dependsOn.map(String) : [],
+        skillId: str(b, 'skillId') || null,
         createdBy: 'user',
       });
     }),
@@ -226,6 +230,126 @@ export function apiRouter(store: Store, studio: Studio, hub: Hub) {
     }),
   );
   r.get('/tasks/:id/history', wrap((req) => studio.taskHistory(String(req.params.id))));
+  r.get('/tasks/:id/knowledge', wrap((req) => studio.taskKnowledge(String(req.params.id))));
+
+  // -- knowledge library ----------------------------------------------------
+  const kn = () => {
+    if (!studio.knowledge) throw new HttpError(503, 'Knowledge library not loaded');
+    return studio.knowledge;
+  };
+  const SOURCE_KINDS = ['docs_site', 'github', 'markdown', 'pdf', 'example_project', 'internal_doc'] as const;
+  const TRUST = ['official', 'community', 'internal'] as const;
+  const depts = (v: unknown): AgentId[] => (Array.isArray(v) ? v.map(String).filter(isAgentId) : []);
+  r.get(
+    '/knowledge',
+    wrap(() => ({ packs: kn().packs(), skills: kn().skills(), sources: kn().sources(), errors: kn().errors })),
+  );
+  r.get(
+    '/knowledge/docs/:id',
+    wrap((req) => {
+      const d = kn().docContent(String(req.params.id));
+      if (!d) throw new HttpError(404, 'Document not found');
+      return d;
+    }),
+  );
+  r.get(
+    '/knowledge/skills/:id',
+    wrap((req) => {
+      const s = kn().skill(String(req.params.id));
+      if (!s) throw new HttpError(404, 'Skill not found');
+      return { ...s, body: kn().skillBody(s.id) };
+    }),
+  );
+  r.put(
+    '/knowledge/skills/:id',
+    wrap((req) => kn().setSkillEnabled(String(req.params.id), Boolean((req.body as Body).enabled))),
+  );
+  r.put(
+    '/knowledge/packs/:id/departments',
+    wrap((req) => kn().setPackDepartments(String(req.params.id), depts((req.body as Body).departments))),
+  );
+  r.get(
+    '/knowledge/search',
+    wrap((req) => {
+      const agent = String(req.query.agent ?? '');
+      if (!isAgentId(agent)) throw new HttpError(400, 'agent is required');
+      const q = String(req.query.q ?? '').trim();
+      if (!q) throw new HttpError(400, 'q is required');
+      const projectId = req.query.projectId ? String(req.query.projectId) : null;
+      const project = projectId ? store.getProject(projectId) : null;
+      const prepared = studio.prepareKnowledge({
+        agentId: agent,
+        projectId,
+        taskText: q,
+        projectText: project ? `${project.genre}\n${project.brief}` : '',
+      });
+      return prepared ? { tools: prepared.tools, skill: prepared.skill, hits: prepared.hits } : { tools: [], skill: null, hits: [] };
+    }),
+  );
+  r.get('/knowledge/sources', wrap(() => kn().sources()));
+  r.post(
+    '/knowledge/sources',
+    wrap(async (req) => {
+      const b = req.body as Body;
+      const kind = str(b, 'kind', { required: true }) as (typeof SOURCE_KINDS)[number];
+      if (!SOURCE_KINDS.includes(kind)) throw new HttpError(400, `kind must be one of ${SOURCE_KINDS.join(', ')}`);
+      const trust = (str(b, 'trust') || (kind === 'internal_doc' ? 'internal' : kind === 'example_project' ? 'community' : 'official')) as (typeof TRUST)[number];
+      if (!TRUST.includes(trust)) throw new HttpError(400, 'trust must be official, community or internal');
+      const files = Array.isArray(b.files)
+        ? (b.files as unknown[]).map((f) => {
+            const o = f as Body;
+            return { path: str(o, 'path', { required: true, max: 300 }), content: typeof o.content === 'string' ? o.content : '' };
+          })
+        : undefined;
+      const pdf = typeof b.pdfBase64 === 'string' ? Uint8Array.from(Buffer.from(b.pdfBase64, 'base64')) : undefined;
+      const projectId = str(b, 'projectId') || null;
+      if (projectId) store.getProject(projectId);
+      return kn().addSource(
+        {
+          kind,
+          name: str(b, 'name', { required: true, max: 120 }),
+          url: str(b, 'url', { max: 500 }),
+          version: str(b, 'version', { max: 120 }),
+          license: str(b, 'license', { max: 200 }),
+          trust,
+          departments: depts(b.departments),
+          includePaths: Array.isArray(b.includePaths) ? b.includePaths.map(String).map((s) => s.trim()).filter(Boolean).slice(0, 200) : [],
+          projectId,
+          notes: str(b, 'notes', { max: 1000 }),
+        },
+        { files, pdf, ref: str(b, 'ref', { max: 120 }) || undefined },
+      );
+    }),
+  );
+  r.patch(
+    '/knowledge/sources/:id',
+    wrap((req) => {
+      const b = req.body as Body;
+      const patch: Parameters<NonNullable<Studio['knowledge']>['updateSource']>[1] = {};
+      if ('enabled' in b) patch.enabled = Boolean(b.enabled);
+      if ('departments' in b) patch.departments = depts(b.departments);
+      if ('name' in b) patch.name = str(b, 'name', { required: true, max: 120 });
+      if ('license' in b) patch.license = str(b, 'license', { max: 200 });
+      if ('trust' in b) {
+        const t = str(b, 'trust') as (typeof TRUST)[number];
+        if (!TRUST.includes(t)) throw new HttpError(400, 'Invalid trust');
+        patch.trust = t;
+      }
+      return kn().updateSource(String(req.params.id), patch);
+    }),
+  );
+  r.post('/knowledge/sources/:id/refresh', wrap((req) => kn().refreshSource(String(req.params.id))));
+  r.delete(
+    '/knowledge/sources/:id',
+    wrap((req) => {
+      kn().deleteSource(String(req.params.id));
+    }),
+  );
+  r.get(
+    '/knowledge/sources/:id/docs/:docId',
+    wrap((req) => kn().sourceDocument(String(req.params.id), String(req.params.docId))),
+  );
+  r.get('/projects/:id/knowledge-usage', wrap((req) => kn().usage({ projectId: String(req.params.id) })));
   r.post('/tasks/:id/start', wrap((req) => studio.startTask(String(req.params.id))));
   r.post('/tasks/:id/cancel', wrap((req) => studio.cancelTask(String(req.params.id))));
   r.post('/tasks/:id/retry', wrap((req) => studio.retryTask(String(req.params.id))));

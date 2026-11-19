@@ -196,6 +196,66 @@ export const MIGRATIONS: string[] = [
   UPDATE tasks SET cost_usd = (SELECT COALESCE(SUM(r.cost_usd), 0) FROM agent_runs r WHERE r.task_id = tasks.id AND r.cost_usd IS NOT NULL)
     WHERE EXISTS (SELECT 1 FROM agent_runs r WHERE r.task_id = tasks.id);
   `,
+  // v5 — knowledge system: owner settings, external sources and per-run knowledge usage.
+  `
+  ALTER TABLE tasks ADD COLUMN skill_id TEXT;
+  CREATE TABLE IF NOT EXISTS knowledge_pack_departments (
+    pack_id TEXT NOT NULL,
+    department TEXT NOT NULL,
+    assigned INTEGER NOT NULL,
+    PRIMARY KEY (pack_id, department)
+  );
+  CREATE TABLE IF NOT EXISTS skill_settings (
+    skill_id TEXT PRIMARY KEY,
+    enabled INTEGER NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS knowledge_sources (
+    id TEXT PRIMARY KEY,
+    kind TEXT NOT NULL,
+    name TEXT NOT NULL,
+    url TEXT NOT NULL DEFAULT '',
+    version TEXT NOT NULL DEFAULT '',
+    license TEXT NOT NULL DEFAULT '',
+    trust TEXT NOT NULL,
+    departments TEXT NOT NULL DEFAULT '[]',
+    include_paths TEXT NOT NULL DEFAULT '[]',
+    project_id TEXT REFERENCES projects(id) ON DELETE CASCADE,
+    enabled INTEGER NOT NULL DEFAULT 1,
+    status TEXT NOT NULL DEFAULT 'pending',
+    error TEXT NOT NULL DEFAULT '',
+    notes TEXT NOT NULL DEFAULT '',
+    retrieved_at TEXT,
+    created_at TEXT NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS knowledge_documents (
+    id TEXT PRIMARY KEY,
+    source_id TEXT NOT NULL REFERENCES knowledge_sources(id) ON DELETE CASCADE,
+    path TEXT NOT NULL,
+    title TEXT NOT NULL,
+    content TEXT NOT NULL,
+    bytes INTEGER NOT NULL,
+    created_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_kdocs_source ON knowledge_documents(source_id);
+  CREATE TABLE IF NOT EXISTS knowledge_usage (
+    id TEXT PRIMARY KEY,
+    run_id TEXT REFERENCES agent_runs(id) ON DELETE CASCADE,
+    project_id TEXT,
+    task_id TEXT,
+    agent_id TEXT NOT NULL,
+    mode TEXT NOT NULL,
+    ref_id TEXT NOT NULL,
+    title TEXT NOT NULL,
+    section TEXT NOT NULL DEFAULT '',
+    origin TEXT NOT NULL,
+    trust TEXT NOT NULL,
+    query TEXT NOT NULL DEFAULT '',
+    score REAL,
+    created_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_kusage_task ON knowledge_usage(task_id);
+  CREATE INDEX IF NOT EXISTS idx_kusage_run ON knowledge_usage(run_id);
+  `,
 ];
 
 export type Db = DatabaseSync;

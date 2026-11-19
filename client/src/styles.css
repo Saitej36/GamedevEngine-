@@ -321,3 +321,27 @@ button.pill { cursor: pointer; }
 .preview, .doc-preview, .md-file { min-width: 0; }
 .run-table td.task-cell { max-width: 150px; overflow: hidden; text-overflow: ellipsis; }
 .md-file { grid-template-columns: minmax(0, 1fr); }
+
+/* knowledge library */
+.library { width: min(1180px, calc(100vw - 32px)); height: min(860px, calc(100vh - 32px)); background: var(--panel); border: 1px solid var(--border); border-radius: 12px; display: flex; flex-direction: column; position: relative; overflow: hidden; }
+.library-head { display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+.library-head .modal-title { margin: 0; }
+.library-body { flex: 1; min-height: 0; overflow: auto; padding: 14px 16px; }
+.library-split { display: grid; grid-template-columns: 260px minmax(0, 1fr); gap: 16px; }
+.dept-list { display: grid; gap: 4px; align-content: start; }
+.dept { display: flex; gap: 8px; align-items: center; text-align: left; background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 6px 8px; cursor: pointer; }
+.dept.active { border-color: var(--accent); }
+.dept-detail { min-width: 0; }
+.pack-row { display: flex; gap: 8px; align-items: center; padding: 4px 0; font-size: 13px; }
+.pack-name { font-weight: 500; }
+.skill-grid, .pack-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 10px; }
+.skill-row { display: flex; gap: 8px; padding: 6px 0; border-top: 1px solid var(--border); font-size: 13px; }
+.dept-chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 8px 0; }
+.chip.on { border-color: var(--green); color: var(--green); }
+.doc-list { display: flex; flex-direction: column; gap: 2px; margin-top: 6px; }
+.sources { display: grid; gap: 10px; }
+.retrieval { display: grid; gap: 10px; }
+.hit { border-top: 1px solid var(--border); padding: 6px 0; }
+.hit-head { display: flex; gap: 6px; align-items: center; font-size: 13px; }
+.hit-text { margin-top: 2px; }
+.library-viewer { position: absolute; top: 56px; right: 0; bottom: 0; width: min(620px, 100%); background: var(--bg-2); border-left: 1px solid var(--border); padding: 12px 16px; overflow: auto; box-shadow: -10px 0 30px rgba(0,0,0,.4); }

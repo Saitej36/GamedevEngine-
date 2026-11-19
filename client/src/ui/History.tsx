@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import type { AgentRun, TaskReview } from '@pixel/shared';
+import type { AgentRun, KnowledgeUsage, TaskReview } from '@pixel/shared';
 import { AGENTS } from '@pixel/shared';
 import { api } from '../api/client';
 import { useStudio } from '../state/store';
@@ -32,12 +32,42 @@ export const RUN_KIND_LABEL: Record<AgentRun['kind'], string> = {
 export function TaskHistory({ taskId, updatedAt }: { taskId: string; updatedAt: string }) {
   const usageVersion = useStudio((s) => s.usageVersion);
   const [data, setData] = useState<{ reviews: TaskReview[]; runs: AgentRun[] } | null>(null);
+  const [knowledge, setKnowledge] = useState<KnowledgeUsage[]>([]);
   useEffect(() => {
     api.taskHistory(taskId).then(setData, () => setData(null));
+    api.taskKnowledge(taskId).then(setKnowledge, () => setKnowledge([]));
   }, [taskId, updatedAt, usageVersion]);
   if (!data) return null;
+  const runKind = new Map(data.runs.map((r) => [r.id, `${RUN_KIND_LABEL[r.kind]} (${AGENTS[r.agentId]?.name.split(' ')[0] ?? r.agentId})`]));
   return (
     <>
+      {knowledge.length > 0 && (
+        <details className="history-block">
+          <summary>Knowledge used ({new Set(knowledge.map((k) => k.refId)).size} sources)</summary>
+          <table className="run-table">
+            <thead>
+              <tr>
+                <th>Run</th>
+                <th>How</th>
+                <th>Reference</th>
+                <th>Trust</th>
+              </tr>
+            </thead>
+            <tbody>
+              {knowledge.map((k) => (
+                <tr key={k.id}>
+                  <td>{(k.runId && runKind.get(k.runId)) ?? '—'}</td>
+                  <td>{k.mode === 'auto' ? 'injected' : k.mode === 'skill' ? 'skill' : `agent ${k.mode}`}</td>
+                  <td className="task-cell" title={`${k.title} § ${k.section}${k.query ? ` — query: ${k.query}` : ''}`}>
+                    <code>{k.refId}</code> {k.section && <span className="muted">§ {k.section}</span>}
+                  </td>
+                  <td>{k.trust}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </details>
+      )}
       {data.reviews.length > 0 && (
         <div className="history-block">
           <div className="section-title">Review history</div>

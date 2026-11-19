@@ -5,7 +5,7 @@ import { actions, retryConnection, selectProject } from '../state/controller';
 import { Avatar } from './Avatar';
 import { STATUS_COLOR } from './format';
 
-export function TopBar({ onNewProject }: { onNewProject: () => void }) {
+export function TopBar({ onNewProject, onKnowledge }: { onNewProject: () => void; onKnowledge: () => void }) {
   const projects = useStudio((s) => s.projects);
   const projectId = useStudio((s) => s.projectId);
   const mode = useStudio((s) => s.mode);
@@ -26,6 +26,9 @@ export function TopBar({ onNewProject }: { onNewProject: () => void }) {
         </select>
         <button className="btn" onClick={onNewProject} disabled={mode !== 'live'}>
           + New project
+        </button>
+        <button className="btn" onClick={onKnowledge} disabled={mode !== 'live'} title={mode !== 'live' ? 'Needs the studio server' : 'Knowledge packs, skills and sources'}>
+          Knowledge
         </button>
       </div>
       <span className="grow" />

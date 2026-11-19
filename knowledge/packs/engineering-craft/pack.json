@@ -1,0 +1,1 @@
+{ "id": "engineering-craft", "title": "Game engineering", "layer": "role", "description": "Software architecture, game programming patterns, optimization, debugging, testing and deployment.", "defaultDepartments": ["programmer", "qa"], "tools": [], "version": "1.0", "license": "Pixel Studio internal", "trust": "internal" }

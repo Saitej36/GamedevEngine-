@@ -164,6 +164,7 @@ export class Simulation {
       error: '',
       costUsd: 0,
       dependsOn: [],
+      skillId: null,
       createdBy,
       createdAt: now,
       updatedAt: now,

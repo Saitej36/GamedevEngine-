@@ -11,11 +11,20 @@ import { Studio } from './orchestrator/studio.js';
 import { runtime } from './agents/runner.js';
 import { apiRouter } from './routes/api.js';
 import { log } from './util.js';
+import { KnowledgeService } from './knowledge/service.js';
+import { KnowledgeStore } from './knowledge/store.js';
+import { workspaceRoot } from './workspace/workspace.js';
 
-const store = new Store(openDb());
+const db = openDb();
+const store = new Store(db);
 const hub = new Hub(store);
 runtime.hub = hub;
-const studio = new Studio(store, hub);
+const knowledge = new KnowledgeService(new KnowledgeStore(db), {
+  root: path.join(REPO_ROOT, 'knowledge'),
+  projectRoot: workspaceRoot,
+  githubToken: process.env.GITHUB_TOKEN,
+});
+const studio = new Studio(store, hub, undefined, undefined, knowledge);
 
 const app = express();
 app.disable('x-powered-by');
