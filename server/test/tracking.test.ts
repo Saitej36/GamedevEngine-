@@ -197,3 +197,54 @@ test('migration v2 preserves v1 data and backfills runs and reviews', () => {
   // Re-opening is idempotent.
   assert.equal(new Store(openDb(file)).listRuns({ projectId: 'p1' }).length, 2);
 });
+
+// 5. RESUMED SESSIONS: the SDK reports cumulative cost ---------------------------
+test('cost: a resumed session records only the increase over its previous report', async () => {
+  // Fake SDK: cumulative total_cost_usd per session, like the real CLI on resume.
+  const cumulative = new Map<string, number>();
+  const { store, studio, project } = setup((o) => {
+    const session = o.resume ?? `${o.agentId}-${o.taskId ?? 'chat'}-${cumulative.size}`;
+    const add = o.agentId === 'director' ? (o.taskId ? 0.2 : 0.1) : o.resume ? 0.07 : 0.9;
+    const total = (cumulative.get(session) ?? 0) + add;
+    cumulative.set(session, total);
+    return { sessionId: session, costUsd: total };
+  });
+  const t = studio.createTask({ projectId: project.id, title: 'GDD', description: 'g', assignee: 'designer', requiresApproval: true, createdBy: 'director' });
+  await waitFor(() => store.getTask(t.id).status === 'awaiting_approval');
+  const ap = store.listApprovals(project.id).find((a) => a.status === 'pending')!;
+  studio.resolveApproval(ap.id, 'rejected', 'Fix the numbers');
+  await waitFor(() => store.getTask(t.id).status === 'awaiting_approval' && store.getTask(t.id).revisionCount === 1);
+
+  const taskRuns = store.listRuns({ taskId: t.id }).filter((r) => r.kind === 'task');
+  assert.equal(taskRuns.length, 2);
+  assert.equal(taskRuns[0].sessionId, taskRuns[1].sessionId, 'revision resumes the same session');
+  assert.ok(Math.abs(taskRuns[0].costUsd! - 0.9) < 1e-9);
+  assert.ok(Math.abs(taskRuns[1].reportedCostUsd! - 0.97) < 1e-9, 'raw SDK figure kept');
+  assert.ok(Math.abs(taskRuns[1].costUsd! - 0.07) < 1e-9, 'only the revision itself is charged');
+  // Task total: two task runs (0.9 + 0.07) + two reviews (0.2 each)
+  assert.ok(Math.abs(store.getTask(t.id).costUsd - 1.37) < 1e-9);
+});
+
+test('migration v4 corrects double-counted resumed-session costs and keeps the raw figures', () => {
+  const file = path.join(TMP, 'v3.db');
+  const v3 = new DatabaseSync(file);
+  for (const m of MIGRATIONS.slice(0, 3)) v3.exec(m);
+  v3.exec('CREATE TABLE schema_version (version INTEGER NOT NULL); INSERT INTO schema_version VALUES (3);');
+  v3.prepare(`INSERT INTO projects (id, name, created_at, updated_at) VALUES ('p','P','t','t')`).run();
+  v3.prepare(`INSERT INTO tasks (id, project_id, title, assignee, cost_usd, created_at, updated_at) VALUES ('t','p','GDD','designer',2.32,'t','t')`).run();
+  const run = v3.prepare(
+    `INSERT INTO agent_runs (id, project_id, task_id, agent_id, kind, session_id, status, cost_usd, cost_status, started_at) VALUES (?, 'p', 't', ?, ?, ?, 'ok', ?, 'actual', ?)`,
+  );
+  run.run('r1', 'designer', 'task', 'S', 0.959, '2026-01-01T00:00:01Z');
+  run.run('r2', 'director', 'review', 'R1', 0.329, '2026-01-01T00:00:02Z');
+  run.run('r3', 'designer', 'task', 'S', 1.033, '2026-01-01T00:00:03Z');
+  v3.close();
+
+  const store = new Store(openDb(file));
+  const runs = Object.fromEntries(store.listRuns({ taskId: 't' }).map((r) => [r.id, r]));
+  assert.ok(Math.abs(runs.r1.costUsd! - 0.959) < 1e-9);
+  assert.ok(Math.abs(runs.r2.costUsd! - 0.329) < 1e-9);
+  assert.ok(Math.abs(runs.r3.costUsd! - 0.074) < 1e-9);
+  assert.equal(runs.r3.reportedCostUsd, 1.033);
+  assert.ok(Math.abs(store.getTask('t').costUsd - 1.362) < 1e-9);
+});

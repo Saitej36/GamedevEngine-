@@ -144,7 +144,10 @@ export interface AgentRun {
   kind: AgentRunKind;
   sessionId: string | null;
   status: 'running' | 'ok' | 'error' | 'cancelled' | 'interrupted';
+  /** This run's own cost (for a resumed session: the increase over the session's previous report). */
   costUsd: number | null;
+  /** Raw total_cost_usd from the SDK (cumulative across a resumed session). */
+  reportedCostUsd: number | null;
   costStatus: CostStatus;
   inputTokens: number | null;
   outputTokens: number | null;

@@ -178,6 +178,24 @@ export const MIGRATIONS: string[] = [
   CREATE INDEX IF NOT EXISTS idx_toolcalls_project ON tool_calls(project_id, created_at);
   CREATE INDEX IF NOT EXISTS idx_toolcalls_use ON tool_calls(tool_use_id);
   `,
+  // v4 — the Agent SDK reports total_cost_usd cumulatively for a resumed session. Keep the raw figure and
+  // store each run's own cost as the increase over the session's previous report.
+  `
+  ALTER TABLE agent_runs ADD COLUMN reported_cost_usd REAL;
+  UPDATE agent_runs SET reported_cost_usd = cost_usd WHERE cost_status = 'actual';
+  UPDATE agent_runs SET cost_usd = reported_cost_usd - (
+      SELECT MAX(p.reported_cost_usd) FROM agent_runs p
+      WHERE p.session_id = agent_runs.session_id AND p.cost_status = 'actual'
+        AND p.started_at < agent_runs.started_at AND p.id != agent_runs.id)
+    WHERE cost_status = 'actual' AND session_id IS NOT NULL
+      AND EXISTS (SELECT 1 FROM agent_runs p
+        WHERE p.session_id = agent_runs.session_id AND p.cost_status = 'actual'
+          AND p.started_at < agent_runs.started_at AND p.id != agent_runs.id
+          AND p.reported_cost_usd <= agent_runs.reported_cost_usd);
+  -- Task totals are derived from runs; refresh them for tasks that have tracked runs.
+  UPDATE tasks SET cost_usd = (SELECT COALESCE(SUM(r.cost_usd), 0) FROM agent_runs r WHERE r.task_id = tasks.id AND r.cost_usd IS NOT NULL)
+    WHERE EXISTS (SELECT 1 FROM agent_runs r WHERE r.task_id = tasks.id);
+  `,
 ];
 
 export type Db = DatabaseSync;

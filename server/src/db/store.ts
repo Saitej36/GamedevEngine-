@@ -122,6 +122,7 @@ const toRun = (r: Row): AgentRun => ({
   sessionId: sn(r.session_id),
   status: s(r.status) as AgentRun['status'],
   costUsd: nn(r.cost_usd),
+  reportedCostUsd: nn(r.reported_cost_usd),
   costStatus: s(r.cost_status) as CostStatus,
   inputTokens: nn(r.input_tokens),
   outputTokens: nn(r.output_tokens),
@@ -153,6 +154,8 @@ export interface RunOutcome {
   status: Exclude<AgentRun['status'], 'running'>;
   /** null when the SDK did not report a cost for this run. */
   costUsd: number | null;
+  /** Raw SDK total_cost_usd (cumulative for a resumed session). */
+  reportedCostUsd?: number | null;
   inputTokens?: number | null;
   outputTokens?: number | null;
   cacheReadTokens?: number | null;
@@ -491,13 +494,14 @@ export class Store {
     const cur = this.getRun(id);
     this.db
       .prepare(
-        `UPDATE agent_runs SET session_id=?, status=?, cost_usd=?, cost_status=?, input_tokens=?, output_tokens=?,
+        `UPDATE agent_runs SET session_id=?, status=?, cost_usd=?, reported_cost_usd=?, cost_status=?, input_tokens=?, output_tokens=?,
            cache_read_tokens=?, cache_creation_tokens=?, num_turns=?, duration_ms=?, model=?, error=?, finished_at=? WHERE id=?`,
       )
       .run(
         o.sessionId ?? cur.sessionId,
         o.status,
         o.costUsd,
+        o.reportedCostUsd ?? o.costUsd,
         o.costUsd === null ? 'unavailable' : 'actual',
         o.inputTokens ?? null,
         o.outputTokens ?? null,
@@ -512,6 +516,17 @@ export class Store {
       );
     return this.getRun(id);
   }
+  /** Highest cumulative cost the SDK has reported for a session in earlier runs. */
+  priorReportedSessionCost(sessionId: string, excludeRunId: string): number {
+    const r = this.db
+      .prepare(
+        `SELECT MAX(reported_cost_usd) AS c FROM agent_runs
+         WHERE session_id = ? AND id != ? AND cost_status = 'actual' AND reported_cost_usd IS NOT NULL`,
+      )
+      .get(sessionId, excludeRunId) as Row;
+    return r.c === null || r.c === undefined ? 0 : Number(r.c);
+  }
+
   /** Runs that were in flight when the server stopped: their cost was never reported. */
   interruptRunningRuns(): number {
     const r = this.db

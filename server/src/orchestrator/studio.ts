@@ -145,10 +145,18 @@ export class Studio {
       this.hub.broadcast({ kind: 'usage_updated', projectId: opts.projectId, taskId: opts.taskId }, opts.projectId);
       throw e;
     }
+    // The SDK's total_cost_usd is cumulative for a resumed session; record this run's own share.
+    let costUsd: number | null = null;
+    if (res.costAvailable) {
+      const resumed = !!opts.resume && res.sessionId === opts.resume;
+      const prior = resumed && res.sessionId ? this.store.priorReportedSessionCost(res.sessionId, run.id) : 0;
+      costUsd = res.costUsd >= prior ? res.costUsd - prior : res.costUsd;
+    }
     this.store.finishRun(run.id, {
       sessionId: res.sessionId,
       status: res.ok ? 'ok' : res.aborted ? 'cancelled' : 'error',
-      costUsd: res.costAvailable ? res.costUsd : null,
+      costUsd,
+      reportedCostUsd: res.costAvailable ? res.costUsd : null,
       inputTokens: res.usage?.inputTokens,
       outputTokens: res.usage?.outputTokens,
       cacheReadTokens: res.usage?.cacheReadTokens,
