@@ -78,6 +78,8 @@ export interface Task {
   files: string[];
   error: string;
   costUsd: number;
+  /** Tasks that must be done before this one may start. */
+  dependsOn: string[];
   createdBy: AgentId | 'user';
   createdAt: string;
   updatedAt: string;
@@ -154,6 +156,26 @@ export interface AgentRun {
   error: string;
   startedAt: string;
   finishedAt: string | null;
+}
+
+/** Audit record of one tool call an agent attempted, with the studio's permission decision. */
+export interface ToolCallRecord {
+  id: string;
+  runId: string | null;
+  projectId: string;
+  taskId: string | null;
+  agentId: AgentId;
+  toolUseId: string | null;
+  tool: string;
+  /** Workspace path (or raw path when it escaped the workspace). */
+  path: string | null;
+  /** Command, pattern or other salient input (truncated). */
+  detail: string;
+  decision: 'allow' | 'deny';
+  reason: string;
+  /** Result reported back to the agent: ok | error; null when no result was seen (denied or interrupted). */
+  outcome: 'ok' | 'error' | null;
+  createdAt: string;
 }
 
 /** A reviewer decision on a task; one record per decision, never overwritten. */

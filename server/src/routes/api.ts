@@ -127,6 +127,13 @@ export function apiRouter(store: Store, studio: Studio, hub: Hub) {
   r.get('/projects/:id/stats', wrap((req) => studio.stats(String(req.params.id))));
   r.get('/projects/:id/usage', wrap((req) => studio.usage(String(req.params.id))));
   r.get(
+    '/projects/:id/tool-calls',
+    wrap((req) => {
+      const d = req.query.decision;
+      return studio.toolCalls(String(req.params.id), d === 'allow' || d === 'deny' ? d : undefined);
+    }),
+  );
+  r.get(
     '/projects/:id/events',
     wrap((req) => store.listEvents({ projectId: String(req.params.id), limit: Math.min(1000, Number(req.query.limit ?? 300)) })),
   );
@@ -188,6 +195,7 @@ export function apiRouter(store: Store, studio: Studio, hub: Hub) {
         priority,
         milestoneId: str(b, 'milestoneId') || null,
         requiresApproval: Boolean(b.requiresApproval),
+        dependsOn: Array.isArray(b.dependsOn) ? b.dependsOn.map(String) : [],
         createdBy: 'user',
       });
     }),

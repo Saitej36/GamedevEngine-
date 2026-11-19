@@ -151,6 +151,33 @@ export const MIGRATIONS: string[] = [
     SELECT 'rev_legacy_' || a.id, a.project_id, a.task_id, 'owner', a.status, a.response, a.id, COALESCE(a.resolved_at, a.created_at)
     FROM approvals a JOIN tasks t ON t.id = a.task_id WHERE a.status != 'pending';
   `,
+  // v3 — task dependencies and an audit log of every agent tool call (allowed or denied).
+  `
+  CREATE TABLE IF NOT EXISTS task_dependencies (
+    task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+    depends_on TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+    PRIMARY KEY (task_id, depends_on)
+  );
+  CREATE INDEX IF NOT EXISTS idx_deps_on ON task_dependencies(depends_on);
+
+  CREATE TABLE IF NOT EXISTS tool_calls (
+    id TEXT PRIMARY KEY,
+    run_id TEXT REFERENCES agent_runs(id) ON DELETE CASCADE,
+    project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    task_id TEXT,
+    agent_id TEXT NOT NULL,
+    tool_use_id TEXT,
+    tool TEXT NOT NULL,
+    path TEXT,
+    detail TEXT NOT NULL DEFAULT '',
+    decision TEXT NOT NULL,
+    reason TEXT NOT NULL DEFAULT '',
+    outcome TEXT,
+    created_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_toolcalls_project ON tool_calls(project_id, created_at);
+  CREATE INDEX IF NOT EXISTS idx_toolcalls_use ON tool_calls(tool_use_id);
+  `,
 ];
 
 export type Db = DatabaseSync;

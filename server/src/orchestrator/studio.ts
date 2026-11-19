@@ -12,7 +12,7 @@ import {
   workerSystemPrompt,
   workerTaskPrompt,
 } from '../agents/prompts.js';
-import { countFiles, fileTree, initWorkspace } from '../workspace/workspace.js';
+import { countFiles, fileTree, initWorkspace, snapshot } from '../workspace/workspace.js';
 import { HttpError, errorMessage, log, nowIso, truncate } from '../util.js';
 
 const STUDIO_TOOL_NAMES = [
@@ -130,6 +130,15 @@ export class Studio {
           this.store.setRunSession(run.id, sessionId);
           opts.onSession?.(sessionId);
         },
+        onToolCall: (c) =>
+          this.store.addToolCall({
+            runId: run.id,
+            projectId: opts.projectId,
+            taskId: opts.taskId,
+            agentId: opts.agentId,
+            ...c,
+          }),
+        onToolResult: (toolUseId, outcome) => this.store.setToolOutcome(toolUseId, outcome),
       });
     } catch (e) {
       this.store.finishRun(run.id, { sessionId: null, status: 'error', costUsd: null, error: errorMessage(e) });
@@ -163,6 +172,11 @@ export class Studio {
     return { reviews: this.store.listReviews(taskId), runs: this.store.listRuns({ taskId }) };
   }
 
+  toolCalls(projectId: string, decision?: 'allow' | 'deny') {
+    this.store.getProject(projectId);
+    return this.store.listToolCalls({ projectId, decision });
+  }
+
   usage(projectId: string) {
     this.store.getProject(projectId);
     return { summary: this.store.usageSummary(projectId), runs: this.store.listRuns({ projectId }) };
@@ -184,12 +198,22 @@ export class Studio {
     priority?: TaskPriority;
     milestoneId?: string | null;
     requiresApproval?: boolean;
+    dependsOn?: string[];
     createdBy: AgentId | 'user';
   }): Task {
     this.store.getProject(input.projectId);
     if (input.assignee === 'director') throw new HttpError(400, 'Tasks must be assigned to a specialist, not the Director');
     if (input.milestoneId) this.store.getMilestone(input.milestoneId);
-    const task = this.pushTask(this.store.createTask(input));
+    const dependsOn = Array.from(new Set(input.dependsOn ?? []));
+    for (const id of dependsOn) {
+      const dep = this.store.findTask(id);
+      if (!dep) throw new HttpError(400, `Dependency ${id} does not exist`);
+      if (dep.projectId !== input.projectId) throw new HttpError(400, `Dependency ${id} belongs to another project`);
+      if (dep.status === 'cancelled') throw new HttpError(400, `Dependency ${id} is cancelled and can never complete`);
+    }
+    // A new task cannot be part of a cycle: its prerequisites already exist and nothing depends on it yet.
+    const task = this.pushTask(this.store.createTask({ ...input, dependsOn }));
+    const waiting = this.store.unmetDependencies(task.id);
     const creator = input.createdBy === 'user' ? null : input.createdBy;
     this.hub.emit('task_created', {
       projectId: task.projectId,
@@ -203,8 +227,10 @@ export class Studio {
       projectId: task.projectId,
       agentId: task.assignee,
       taskId: task.id,
-      message: `${AGENTS[task.assignee].name} was assigned "${task.title}"`,
-      data: { title: task.title },
+      message: `${AGENTS[task.assignee].name} was assigned "${task.title}"${
+        waiting.length ? ` (waiting on ${waiting.map((w) => `"${w.title}"`).join(', ')})` : ''
+      }`,
+      data: { title: task.title, waitingOn: waiting.map((w) => w.id) },
     });
     // The briefing is short: the assignee goes back to idle until the scheduler starts the task.
     setTimeout(() => {
@@ -279,6 +305,9 @@ export class Studio {
     const t = this.store.getTask(id);
     if (!['queued', 'revision'].includes(t.status)) throw new HttpError(409, `Task is ${t.status}`);
     if (this.isAgentBusy(t.assignee)) throw new HttpError(409, `${AGENTS[t.assignee].name} is busy with another task`);
+    const waiting = this.store.unmetDependencies(t.id);
+    if (waiting.length)
+      throw new HttpError(409, `Waiting on prerequisite task(s): ${waiting.map((w) => `"${w.title}"`).join(', ')}`);
     void this.runTask(t);
     return this.store.getTask(id);
   }
@@ -306,7 +335,7 @@ export class Studio {
         agentId,
         projectId: task.projectId,
         taskId: task.id,
-        prompt: workerTaskPrompt(task),
+        prompt: workerTaskPrompt(task, task.dependsOn.map((id) => this.store.findTask(id)).filter((t): t is Task => !!t)),
         systemPrompt: workerSystemPrompt(agentId, project, milestones, AGENTS[agentId].writableDirs),
         resume,
         abort,
@@ -406,6 +435,8 @@ export class Studio {
       message: `${AGENTS[t.assignee].name} completed "${t.title}"`,
       data: { files: t.files },
     });
+    // Unblock anything that was waiting on this task.
+    if (this.store.dependents(t.id).length) this.kick();
   }
 
   private sendBack(id: string, feedback: string, from: string) {
@@ -495,6 +526,8 @@ export class Studio {
           milestone_id: t.milestoneId,
           revisions: t.revisionCount,
           files: t.files,
+          depends_on: t.dependsOn,
+          waiting_on: this.store.unmetDependencies(t.id).map((d) => d.id),
           result: truncate(t.result, 600),
           error: t.error || undefined,
         }));
@@ -502,6 +535,7 @@ export class Studio {
           milestones: this.store.listMilestones(projectId),
           tasks,
           pending_approvals: this.store.listApprovals(projectId).filter((a) => a.status === 'pending').map((a) => ({ id: a.id, title: a.title })),
+          workspace_files: [...snapshot(projectId).keys()].sort(),
           stats: this.stats(projectId),
         };
         return ok(JSON.stringify(status, null, 2));
@@ -516,6 +550,10 @@ export class Studio {
           priority: z.enum(['low', 'medium', 'high', 'critical']).default('medium'),
           milestone_id: z.string().optional(),
           requires_approval: z.boolean().default(false).describe('Owner must sign off the deliverable before it is done'),
+          depends_on: z
+            .array(z.string())
+            .default([])
+            .describe('Task ids that must be done (incl. owner sign-off) before this task may start'),
         },
         async (a) => {
           try {
@@ -527,9 +565,15 @@ export class Studio {
               priority: a.priority,
               milestoneId: a.milestone_id ?? null,
               requiresApproval: a.requires_approval,
+              dependsOn: a.depends_on,
               createdBy: 'director',
             });
-            return ok(`Created ${t.id} for ${AGENTS[t.assignee].name}. It will start automatically.`);
+            const waiting = this.store.unmetDependencies(t.id);
+            return ok(
+              waiting.length
+                ? `Created ${t.id} for ${AGENTS[t.assignee].name}. It will start automatically once ${waiting.map((w) => w.id).join(', ')} are done.`
+                : `Created ${t.id} for ${AGENTS[t.assignee].name}. It will start automatically.`,
+            );
           } catch (e) {
             return fail(errorMessage(e));
           }

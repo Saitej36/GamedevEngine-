@@ -67,13 +67,23 @@ When you are done, reply to the Director with a short report (under 200 words):
 1. What you did  2. Files created/changed  3. Open questions or risks.`;
 }
 
-export function workerTaskPrompt(task: Task) {
+function prerequisitesBlock(prereqs: Task[]) {
+  if (!prereqs.length) return '';
+  return `\n\nPrerequisite deliverables (completed and approved — read these before you start):\n${prereqs
+    .map(
+      (p) =>
+        `- ${p.title} (${AGENTS[p.assignee].title}): ${p.files.length ? p.files.join(', ') : 'see task report'}`,
+    )
+    .join('\n')}`;
+}
+
+export function workerTaskPrompt(task: Task, prereqs: Task[] = []) {
   let p = `New task from the Director.
 
 Task ${task.id}: ${task.title}
 Priority: ${task.priority}
 
-${task.description}`;
+${task.description}${prerequisitesBlock(prereqs)}`;
   if (task.revisionCount > 0 && task.feedback) {
     p = `REVISION ${task.revisionCount} requested for task ${task.id}: ${task.title}
 
@@ -81,7 +91,7 @@ Feedback you must address:
 ${task.feedback}
 
 Original task description:
-${task.description}
+${task.description}${prerequisitesBlock(prereqs)}
 
 Update your existing files rather than starting over, unless the feedback asks for a redo.`;
   }
@@ -105,6 +115,9 @@ How you work:
   mcp__studio__create_task. Each task description must stand alone: the assignee only sees the task, the brief and the files.
   Mention files they should read or produce. Order matters: create foundational tasks (GDD, style guide) first.
 - Use mcp__studio__add_milestone to structure larger efforts and pass milestone_id when creating tasks.
+- When a task builds on another task's output, pass depends_on with the prerequisite task ids. The studio will not
+  start it until every prerequisite is done (including owner sign-off), and the assignee is told which files to read.
+  Create the prerequisite first so you have its id.
 - Use mcp__studio__get_project_status to see tasks, results and pending approvals before planning further.
 - Important decisions (scope changes, art direction choice, genre pivots, cutting features, anything costly or
   irreversible) must go to the owner with mcp__studio__request_approval. For tasks whose deliverable the owner must sign
@@ -134,7 +147,14 @@ ${report || '(no report)'}
 Files created or changed:
 ${files.length ? files.map((f) => `- ${f}`).join('\n') : '- (none detected)'}
 
-Inspect the actual files with Read/Glob/Grep. Then call mcp__studio__review_task exactly once with decision "approve"
-if it meets the task's acceptance criteria at a reasonable quality bar, or "revise" with specific, actionable feedback.
+Review the actual files with Read/Glob/Grep; never rely on the agent report alone. Check every acceptance criterion
+in the task description against the files, one by one, and verify that numbers, file paths and cross-references the
+deliverable claims are actually true (e.g. referenced files exist, totals add up, code matches what the report says).
+
+Then call mcp__studio__review_task exactly once:
+- "revise" if any stated acceptance criterion is not met or a claim in the deliverable is false. List each failed
+  criterion with the file/section and the concrete change required.
+- "approve" only if every acceptance criterion is met. Minor polish may be noted in the feedback without blocking.
+
 Do not create new tasks during a review unless follow-up work is clearly required. Finish with a one-line summary.`;
 }

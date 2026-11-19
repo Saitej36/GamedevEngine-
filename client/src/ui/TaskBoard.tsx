@@ -72,6 +72,9 @@ function TaskCard({ task: t, open, onToggle }: { task: Task; open: boolean; onTo
   const mode = useStudio((s) => s.mode);
   const aiLive = useStudio((s) => s.info?.aiMode === 'live');
   const projectId = useStudio((s) => s.projectId);
+  const allTasks = useStudio((s) => s.tasks);
+  const prereqs = t.dependsOn.map((id) => allTasks.find((x) => x.id === id)).filter((x): x is Task => !!x);
+  const waitingOn = prereqs.filter((p) => p.status !== 'done');
   return (
     <div className={`card task-card prio-${t.priority} st-${t.status}`}>
       <button className="task-head" onClick={onToggle}>
@@ -82,6 +85,11 @@ function TaskCard({ task: t, open, onToggle }: { task: Task; open: boolean; onTo
         <span className={`pill st-${t.status}`}>{TASK_STATUS_LABEL[t.status]}</span>
         {t.revisionCount > 0 && <span className="pill">rev {t.revisionCount}</span>}
         {t.requiresApproval && <span className="pill">sign-off</span>}
+        {waitingOn.length > 0 && ['queued', 'revision'].includes(t.status) && (
+          <span className="pill st-awaiting_approval" title={waitingOn.map((p) => p.title).join(', ')}>
+            waiting on {waitingOn.length}
+          </span>
+        )}
         <span className="muted">{t.priority}</span>
         <span className="grow" />
         <span className="muted">{timeAgo(t.updatedAt)}</span>
@@ -93,6 +101,17 @@ function TaskCard({ task: t, open, onToggle }: { task: Task; open: boolean; onTo
             {t.costUsd > 0 && ` · $${t.costUsd.toFixed(3)}`}
           </div>
           <Markdown text={t.description} />
+          {prereqs.length > 0 && (
+            <div className="small">
+              <span className="muted">Depends on: </span>
+              {prereqs.map((p, i) => (
+                <span key={p.id}>
+                  {i > 0 && ', '}
+                  {p.title} <span className={`pill st-${p.status}`}>{TASK_STATUS_LABEL[p.status]}</span>
+                </span>
+              ))}
+            </div>
+          )}
           {t.feedback && t.revisionCount > 0 && ['revision', 'in_progress'].includes(t.status) && (
             <div className="notice">
               <strong>Revision requested:</strong> <Markdown text={t.feedback} />

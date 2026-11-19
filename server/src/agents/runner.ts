@@ -30,6 +30,27 @@ export interface RunOptions {
   thinkingStatus?: AgentStatus;
   /** Called as soon as the SDK announces the session id (before the run finishes). */
   onSession?: (sessionId: string) => void;
+  /** Audit hook: every tool call the agent attempts, with the guard's decision. */
+  onToolCall?: (c: ToolCallAudit) => void;
+  /** Audit hook: the result the agent received for an allowed call. */
+  onToolResult?: (toolUseId: string, outcome: 'ok' | 'error') => void;
+}
+
+export interface ToolCallAudit {
+  toolUseId: string | null;
+  tool: string;
+  path: string | null;
+  detail: string;
+  decision: 'allow' | 'deny';
+  reason: string;
+}
+
+/** Salient, truncated description of a tool input for the audit log. */
+export function auditFields(root: string, input: Record<string, unknown>): { path: string | null; detail: string } {
+  const raw = (input.file_path ?? input.path ?? input.notebook_path) as unknown;
+  const path = typeof raw === 'string' && raw ? safeRel(root, raw) : null;
+  const d = input.command ?? input.pattern ?? input.url ?? input.title ?? input.task_id ?? '';
+  return { path, detail: truncate(typeof d === 'string' ? d : JSON.stringify(d), 200) };
 }
 
 export interface RunResult {
@@ -107,7 +128,19 @@ export async function runAgent(o: RunOptions): Promise<RunResult> {
 
   const guardHook: HookCallback = async (input) => {
     if (input.hook_event_name !== 'PreToolUse') return {};
-    const d = checkToolUse(agent, root, input.tool_name, (input.tool_input ?? {}) as Record<string, unknown>, mcpTools);
+    const toolInput = (input.tool_input ?? {}) as Record<string, unknown>;
+    const d = checkToolUse(agent, root, input.tool_name, toolInput, mcpTools);
+    try {
+      o.onToolCall?.({
+        toolUseId: input.tool_use_id ?? null,
+        tool: input.tool_name,
+        ...auditFields(root, toolInput),
+        decision: d.allow ? 'allow' : 'deny',
+        reason: d.allow ? '' : d.reason,
+      });
+    } catch (e) {
+      log.warn('tool-call audit failed', e);
+    }
     if (d.allow) return {};
     log.warn(`[guard] ${o.agentId} denied ${input.tool_name}: ${d.reason}`);
     return {
@@ -193,6 +226,11 @@ export async function runAgent(o: RunOptions): Promise<RunResult> {
         if (!Array.isArray(content)) continue;
         for (const block of content) {
           if (block.type !== 'tool_result') continue;
+          try {
+            o.onToolResult?.(block.tool_use_id, block.is_error ? 'error' : 'ok');
+          } catch (e) {
+            log.warn('tool-result audit failed', e);
+          }
           const pending = pendingFiles.get(block.tool_use_id);
           if (!pending) continue;
           pendingFiles.delete(block.tool_use_id);

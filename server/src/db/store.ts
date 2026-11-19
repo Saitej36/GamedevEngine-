@@ -5,6 +5,7 @@ import type {
   AgentRunKind,
   CostStatus,
   TaskReview,
+  ToolCallRecord,
   UsageSummary,
   AgentState,
   Approval,
@@ -60,6 +61,7 @@ const toTask = (r: Row): Task => ({
   files: JSON.parse(s(r.files) || '[]') as string[],
   error: s(r.error),
   costUsd: Number(r.cost_usd),
+  dependsOn: s(r.deps) ? s(r.deps).split(',') : [],
   createdBy: s(r.created_by) as Task['createdBy'],
   createdAt: s(r.created_at),
   updatedAt: s(r.updated_at),
@@ -161,6 +163,27 @@ export interface RunOutcome {
   error?: string;
 }
 
+const DEPS = (alias: string) =>
+  `(SELECT group_concat(d.depends_on, ',') FROM task_dependencies d WHERE d.task_id = ${alias}.id) AS deps`;
+const TASK_COLS = `tasks.*, ${DEPS('tasks')}`;
+const TASK_COLS_T = `t.*, ${DEPS('t')}`;
+
+const toToolCall = (r: Row): ToolCallRecord => ({
+  id: s(r.id),
+  runId: sn(r.run_id),
+  projectId: s(r.project_id),
+  taskId: sn(r.task_id),
+  agentId: s(r.agent_id) as AgentId,
+  toolUseId: sn(r.tool_use_id),
+  tool: s(r.tool),
+  path: sn(r.path),
+  detail: s(r.detail),
+  decision: s(r.decision) as ToolCallRecord['decision'],
+  reason: s(r.reason),
+  outcome: sn(r.outcome) as ToolCallRecord['outcome'],
+  createdAt: s(r.created_at),
+});
+
 const PRIORITY_ORDER = `CASE priority WHEN 'critical' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END`;
 
 export interface NewTask {
@@ -171,6 +194,7 @@ export interface NewTask {
   priority?: TaskPriority;
   milestoneId?: string | null;
   requiresApproval?: boolean;
+  dependsOn?: string[];
   createdBy: AgentId | 'user';
 }
 
@@ -259,23 +283,23 @@ export class Store {
   // -- tasks ----------------------------------------------------------------
   listTasks(projectId: string): Task[] {
     return (
-      this.db.prepare(`SELECT * FROM tasks WHERE project_id = ? ORDER BY created_at`).all(projectId) as Row[]
+      this.db.prepare(`SELECT ${TASK_COLS} FROM tasks WHERE project_id = ? ORDER BY created_at`).all(projectId) as Row[]
     ).map(toTask);
   }
   tasksForAgent(agentId: AgentId, limit = 50): Task[] {
     return (
       this.db
-        .prepare(`SELECT * FROM tasks WHERE assignee = ? ORDER BY updated_at DESC LIMIT ?`)
+        .prepare(`SELECT ${TASK_COLS} FROM tasks WHERE assignee = ? ORDER BY updated_at DESC LIMIT ?`)
         .all(agentId, limit) as Row[]
     ).map(toTask);
   }
   getTask(id: string): Task {
-    const r = this.db.prepare(`SELECT * FROM tasks WHERE id = ?`).get(id) as Row | undefined;
+    const r = this.db.prepare(`SELECT ${TASK_COLS} FROM tasks WHERE id = ?`).get(id) as Row | undefined;
     if (!r) throw new HttpError(404, `Task ${id} not found`);
     return toTask(r);
   }
   findTask(id: string): Task | null {
-    const r = this.db.prepare(`SELECT * FROM tasks WHERE id = ?`).get(id) as Row | undefined;
+    const r = this.db.prepare(`SELECT ${TASK_COLS} FROM tasks WHERE id = ?`).get(id) as Row | undefined;
     return r ? toTask(r) : null;
   }
   createTask(t: NewTask): Task {
@@ -299,6 +323,8 @@ export class Store {
         ts,
         ts,
       );
+    const dep = this.db.prepare(`INSERT OR IGNORE INTO task_dependencies (task_id, depends_on) VALUES (?, ?)`);
+    for (const d of t.dependsOn ?? []) dep.run(id, d);
     return this.getTask(id);
   }
   updateTask(
@@ -364,15 +390,17 @@ export class Store {
   nextTaskFor(agentId: AgentId): Task | null {
     const r = this.db
       .prepare(
-        `SELECT t.* FROM tasks t JOIN projects p ON p.id = t.project_id
+        `SELECT ${TASK_COLS_T} FROM tasks t JOIN projects p ON p.id = t.project_id
          WHERE t.assignee = ? AND t.status IN ('queued','revision') AND p.status = 'active'
+           AND NOT EXISTS (SELECT 1 FROM task_dependencies d JOIN tasks dt ON dt.id = d.depends_on
+                           WHERE d.task_id = t.id AND dt.status != 'done')
          ORDER BY ${PRIORITY_ORDER}, t.created_at LIMIT 1`,
       )
       .get(agentId) as Row | undefined;
     return r ? toTask(r) : null;
   }
   tasksInStatus(status: TaskStatus): Task[] {
-    return (this.db.prepare(`SELECT * FROM tasks WHERE status = ? ORDER BY updated_at`).all(status) as Row[]).map(
+    return (this.db.prepare(`SELECT ${TASK_COLS} FROM tasks WHERE status = ? ORDER BY updated_at`).all(status) as Row[]).map(
       toTask,
     );
   }
@@ -547,6 +575,53 @@ export class Store {
       out.tokens.cacheCreation += r.cacheCreationTokens ?? 0;
     }
     return out;
+  }
+
+  /** Tasks this task waits on that are not done yet. */
+  unmetDependencies(taskId: string): Task[] {
+    return (
+      this.db
+        .prepare(
+          `SELECT ${TASK_COLS} FROM tasks JOIN task_dependencies d ON d.depends_on = tasks.id
+           WHERE d.task_id = ? AND tasks.status != 'done'`,
+        )
+        .all(taskId) as Row[]
+    ).map(toTask);
+  }
+  dependents(taskId: string): Task[] {
+    return (
+      this.db
+        .prepare(`SELECT ${TASK_COLS} FROM tasks JOIN task_dependencies d ON d.task_id = tasks.id WHERE d.depends_on = ?`)
+        .all(taskId) as Row[]
+    ).map(toTask);
+  }
+
+  // -- tool-call audit log --------------------------------------------------
+  addToolCall(c: Omit<ToolCallRecord, 'id' | 'createdAt' | 'outcome'>): ToolCallRecord {
+    const id = newId('tc');
+    this.db
+      .prepare(
+        `INSERT INTO tool_calls (id, run_id, project_id, task_id, agent_id, tool_use_id, tool, path, detail, decision, reason, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(id, c.runId, c.projectId, c.taskId, c.agentId, c.toolUseId, c.tool, c.path, c.detail, c.decision, c.reason, nowIso());
+    return toToolCall(this.db.prepare(`SELECT * FROM tool_calls WHERE id = ?`).get(id) as Row);
+  }
+  setToolOutcome(toolUseId: string, outcome: 'ok' | 'error') {
+    this.db.prepare(`UPDATE tool_calls SET outcome = ? WHERE tool_use_id = ? AND decision = 'allow'`).run(outcome, toolUseId);
+  }
+  listToolCalls(f: { projectId?: string; runId?: string; taskId?: string; decision?: 'allow' | 'deny' }): ToolCallRecord[] {
+    const where: string[] = [];
+    const args: string[] = [];
+    if (f.projectId) (where.push('project_id = ?'), args.push(f.projectId));
+    if (f.runId) (where.push('run_id = ?'), args.push(f.runId));
+    if (f.taskId) (where.push('task_id = ?'), args.push(f.taskId));
+    if (f.decision) (where.push('decision = ?'), args.push(f.decision));
+    return (
+      this.db
+        .prepare(`SELECT * FROM tool_calls ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY created_at, rowid`)
+        .all(...args) as Row[]
+    ).map(toToolCall);
   }
 
   // -- review history -------------------------------------------------------

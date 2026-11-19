@@ -163,6 +163,7 @@ export class Simulation {
       files: [],
       error: '',
       costUsd: 0,
+      dependsOn: [],
       createdBy,
       createdAt: now,
       updatedAt: now,
