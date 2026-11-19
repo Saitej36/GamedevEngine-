@@ -6,6 +6,7 @@ import { config } from '../config.js';
 import type { Store } from '../db/store.js';
 import type { Hub } from '../events/hub.js';
 import { runAgent, type RunOptions, type RunResult } from '../agents/runner.js';
+import { isWritable } from '../agents/guard.js';
 import {
   directorReviewPrompt,
   directorSystemPrompt,
@@ -70,9 +71,29 @@ export class Studio {
       this.store.updateTask(t.id, { status: 'queued', error: 'Interrupted by server restart; re-queued.' });
     }
     for (const a of AGENT_IDS) this.store.setAgentState({ agentId: a, status: 'idle', activity: '', currentTaskId: null, projectId: null });
+    this.repairFileAttribution();
     // Deliverables that were waiting for the Director's review get reviewed again.
     for (const t of this.store.tasksInStatus('in_review')) this.enqueueReview(t.id);
     this.kick();
+  }
+
+  /**
+   * Earlier builds attributed every file that changed in the workspace during a run to that run, which
+   * mislabels files written concurrently by other agents. An assignee can only ever write inside its own
+   * folders (enforced by the guard), so drop any task file outside them. Idempotent.
+   */
+  repairFileAttribution() {
+    let fixed = 0;
+    for (const p of this.store.listProjects()) {
+      for (const t of this.store.listTasks(p.id)) {
+        const keep = t.files.filter((f) => isWritable(f, AGENTS[t.assignee].writableDirs));
+        if (keep.length === t.files.length) continue;
+        log.warn(`[repair] ${t.id}: removed files written by other agents: ${t.files.filter((f) => !keep.includes(f)).join(', ')}`);
+        this.store.updateTask(t.id, { files: keep });
+        fixed++;
+      }
+    }
+    return fixed;
   }
 
   // ---------------------------------------------------------------------------

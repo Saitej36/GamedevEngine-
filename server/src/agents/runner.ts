@@ -11,7 +11,7 @@ import { config } from '../config.js';
 import type { Hub } from '../events/hub.js';
 import { diffSnapshots, resolveInside, snapshot, toPosixRel, workspaceRoot } from '../workspace/workspace.js';
 import { errorMessage, log, truncate } from '../util.js';
-import { ALWAYS_DISALLOWED, checkToolUse, toolsFor } from './guard.js';
+import { ALWAYS_DISALLOWED, checkToolUse, isWritable, toolsFor } from './guard.js';
 
 export interface RunOptions {
   agentId: AgentId;
@@ -283,20 +283,36 @@ export async function runAgent(o: RunOptions): Promise<RunResult> {
     log.error(`[${o.agentId}] run failed:`, result.error);
   }
 
-  // Ground truth for files: diff the workspace (also catches files written via Bash).
-  result.files = diffSnapshots(before, snapshot(o.projectId));
-  for (const f of result.files) {
-    if (emitted.has(f)) continue;
+  // Attribution: files this run wrote through its own successful file-tool calls. Other agents may be
+  // writing to the same workspace concurrently, so a workspace diff is only used for shell writes.
+  const viaShell = attributeShellFiles(
+    diffSnapshots(before, snapshot(o.projectId)),
+    emitted,
+    agent.writableDirs,
+    toolsFor(agent).includes('Bash'),
+  );
+  result.files = [...emitted, ...viaShell];
+  for (const f of viaShell) {
     hub.emit('file_created', {
       projectId: o.projectId,
       agentId: o.agentId,
       taskId: o.taskId,
-      message: `Created ${f}`,
-      data: { path: f },
+      message: `Created ${f} (shell)`,
+      data: { path: f, via: 'shell' },
     });
   }
   if (result.files.length) hub.broadcast({ kind: 'files_changed', projectId: o.projectId }, o.projectId);
   return result;
+}
+
+/**
+ * Files changed in the workspace during a run that were not written through the run's own file tools.
+ * Only an agent with shell access can have written those, and only inside its writable folders; anything
+ * else was written by another agent working at the same time.
+ */
+export function attributeShellFiles(changed: string[], viaTools: Set<string>, writableDirs: string[], hasShell: boolean) {
+  if (!hasShell) return [];
+  return changed.filter((f) => !viaTools.has(f) && isWritable(f, writableDirs));
 }
 
 /** Late-bound runtime services (set in index.ts) to avoid import cycles. */

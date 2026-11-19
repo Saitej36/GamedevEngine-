@@ -130,3 +130,24 @@ test('audit: tool inputs are summarised; paths outside the workspace are kept ve
   assert.deepEqual(auditFields(root, { file_path: '/etc/passwd' }), { path: '/etc/passwd', detail: '' });
   assert.deepEqual(auditFields(root, { pattern: '**/*.md' }), { path: null, detail: '**/*.md' });
 });
+
+test('attribution: concurrent writes by other agents are never credited to a run', async () => {
+  const { attributeShellFiles } = await import('../src/agents/runner.js');
+  const changed = ['assets/hero.svg', 'src/core/collision.js', 'docs/production/ROADMAP.md'];
+  // Artist without shell: only its own tool writes count.
+  assert.deepEqual(attributeShellFiles(changed, new Set(['assets/hero.svg']), ['assets', 'docs/art'], false), []);
+  // Programmer with shell: shell-written files inside its own folders only.
+  assert.deepEqual(
+    attributeShellFiles(changed, new Set<string>(), ['src', 'tests', 'index.html'], true),
+    ['src/core/collision.js'],
+  );
+});
+
+test('attribution: startup repair removes files outside the assignee folders and is idempotent', () => {
+  const { store, studio, project } = setup();
+  const t = studio.createTask({ projectId: project.id, title: 'Art', description: 'a', assignee: 'artist', createdBy: 'user' });
+  store.updateTask(t.id, { files: ['assets/hero.svg', 'docs/art/ART_BIBLE.md', 'src/core/collision.js'] });
+  assert.equal(studio.repairFileAttribution(), 1);
+  assert.deepEqual(store.getTask(t.id).files, ['assets/hero.svg', 'docs/art/ART_BIBLE.md']);
+  assert.equal(studio.repairFileAttribution(), 0);
+});
