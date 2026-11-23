@@ -8,14 +8,16 @@ import type { Hub } from '../events/hub.js';
 import { runAgent, type RunOptions, type RunResult } from '../agents/runner.js';
 import { isWritable } from '../agents/guard.js';
 import type { KnowledgeService, RoutingPlan } from '../knowledge/service.js';
-import type { KnowledgeHit, Skill } from '@pixel/shared';
+import type { CitationCheck, KnowledgeHit, Skill } from '@pixel/shared';
 import {
   directorReviewPrompt,
   directorSystemPrompt,
   workerSystemPrompt,
   workerTaskPrompt,
 } from '../agents/prompts.js';
-import { countFiles, fileTree, initWorkspace, snapshot } from '../workspace/workspace.js';
+import fs from 'node:fs';
+import path from 'node:path';
+import { countFiles, fileTree, initWorkspace, snapshot, workspaceRoot } from '../workspace/workspace.js';
 import { HttpError, errorMessage, log, nowIso, truncate } from '../util.js';
 
 const STUDIO_TOOL_NAMES = [
@@ -530,6 +532,7 @@ export class Studio {
         return;
       }
 
+      this.checkCitations(current, res.runId, res.files.length ? res.files : files, res.text);
       task = this.pushTask(
         this.store.updateTask(task.id, { status: 'in_review', result: res.text, files, costUsd, error: '' }),
       );
@@ -556,6 +559,36 @@ export class Studio {
       this.running.delete(task.id);
       this.kick();
     }
+  }
+
+  /** Automatic citation check over the run's deliverables and report (Phase 1.1). Never blocks the run itself. */
+  private checkCitations(task: Task, runId: string, files: string[], report: string): CitationCheck | null {
+    if (!this.knowledge) return null;
+    try {
+      const root = workspaceRoot(task.projectId);
+      const texts = [{ name: '(agent report)', text: report }];
+      for (const f of files) {
+        const abs = path.resolve(root, f);
+        if (!abs.startsWith(root + path.sep) || !fs.existsSync(abs) || !fs.statSync(abs).isFile()) continue;
+        if (fs.statSync(abs).size > 400_000 || !/\.(md|txt|json|ya?ml|cs|cpp|h|hpp|js|ts|mjs|html|ini|csv)$/i.test(f)) continue;
+        texts.push({ name: f, text: fs.readFileSync(abs, 'utf8') });
+      }
+      return this.knowledge.checkCitations({ runId, projectId: task.projectId, taskId: task.id, agentId: task.assignee }, texts);
+    } catch (e) {
+      log.warn('citation check failed', e);
+      return null;
+    }
+  }
+
+  /** Latest citation check of the assignee's own work on this task. */
+  latestCitationCheck(taskId: string): CitationCheck | null {
+    const t = this.store.findTask(taskId);
+    if (!this.knowledge || !t) return null;
+    return this.knowledge.citationChecks({ taskId }).filter((c) => c.agentId === t.assignee).at(-1) ?? null;
+  }
+
+  citationChecks(taskId: string) {
+    return this.knowledge ? this.knowledge.citationChecks({ taskId }) : [];
   }
 
   private failTask(id: string, error: string, extra: Partial<Task> = {}) {
@@ -907,7 +940,7 @@ export class Studio {
         agentId: 'director',
         projectId: task.projectId,
         taskId,
-        prompt: directorReviewPrompt(task, task.result, task.files),
+        prompt: directorReviewPrompt(task, task.result, task.files, this.latestCitationCheck(taskId)),
         systemPrompt: directorSystemPrompt(project, this.store.listMilestones(task.projectId), this.skillCatalogText()),
         mcpServers: { studio: this.studioServer(task.projectId, { taskId, out }) },
         mcpTools: [...STUDIO_TOOL_NAMES, REVIEW_TOOL],
@@ -933,7 +966,14 @@ export class Studio {
         this.finalizeWithOwner(taskId, `The Director could not complete the review (${truncate(res.error, 200)}). Please check the deliverable.`);
         return;
       }
-      const decision = out.decision ?? { decision: 'approve' as const, feedback: truncate(res.text, 500) || 'Approved.' };
+      let decision = out.decision ?? { decision: 'approve' as const, feedback: truncate(res.text, 500) || 'Approved.' };
+      // Server-side enforcement: an approval cannot stand while the automatic citation check fails.
+      const cite = this.latestCitationCheck(taskId);
+      if (decision.decision === 'approve' && cite && (cite.status === 'missing' || cite.status === 'invalid'))
+        decision = {
+          decision: 'revise',
+          feedback: `${decision.feedback}\n\nCitation check failed (automatic, enforced by the studio): ${cite.summary} Cite every reference you relied on as [K:<ref>] using the exact ref ids you were given, remove invalid citations, or state [K:none] if you relied on none.`,
+        };
       this.review({
         projectId: fresh.projectId,
         taskId,

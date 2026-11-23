@@ -47,7 +47,7 @@ test('catalog: every pack and skill loads, and every skill has all six required 
       assert.equal(s!.role, role);
       for (const key of Object.keys(SKILL_SECTIONS)) assert.ok(s!.sections[key as keyof typeof SKILL_SECTIONS].length > 40, `${id}: ${key} too short`);
     }
-  for (const p of c.packs) assert.ok(p.docs.length >= 2, `pack ${p.id} has ${p.docs.length} docs`);
+  for (const p of c.packs) assert.ok(p.docs.length + p.sharedDocs.length >= (p.layer === 'genre' ? 1 : 2), `pack ${p.id} has ${p.docs.length} docs`);
 });
 
 test('catalog: a skill missing a mandatory section is rejected, never half-loaded', async () => {
@@ -137,7 +137,8 @@ test('access: departments only search their assigned packs; the owner can reassi
   // Owner removes design-craft from the designer.
   k.setPackDepartments('design-craft', ['director']);
   const after = ask(k, 'designer', 'core gameplay loop and progression balancing');
-  assert.ok(!after.some((h) => h.packId === 'design-craft'));
+  // Only the genre document shared through genre-core stays readable; the rest of design-craft is gone.
+  assert.ok(!after.some((h) => h.packId === 'design-craft' && h.refId !== 'design.genre-design'));
   assert.equal(k.read('designer', 'design.core-loops', null, []), null);
   assert.ok(k.read('director', 'design.core-loops', null, []));
 });

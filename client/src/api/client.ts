@@ -1,4 +1,5 @@
 import type {
+  CitationCheck,
   ImportedSkill,
   ProjectProfile,
   RoutingDecision,
@@ -136,8 +137,21 @@ export const api = {
   sourceDoc: (id: string, docId: string) => req<{ path: string; title: string; content: string }>('GET', `/knowledge/sources/${id}/docs/${docId}`),
   taskRouting: (id: string) => req<RoutingDecision[]>('GET', `/tasks/${id}/routing`),
   skillImports: () => req<ImportedSkill[]>('GET', '/knowledge/skill-imports'),
+  importBundles: () => req<ImportBundle[]>('GET', '/knowledge/import-bundles'),
+  importBundle: (id: string) => req<{ id: string; kind: string; result: string; blocking: string[] }[]>('POST', `/knowledge/import-bundles/${id}/import`),
+  reviewSource: (id: string, decision: 'approve' | 'reject', note: string) => req<KnowledgeSource>('POST', `/knowledge/sources/${id}/review`, { decision, note }),
+  taskCitations: (id: string) => req<CitationCheck[]>('GET', `/tasks/${id}/citations`),
   reviewImport: (id: string, decision: 'approve' | 'reject', note: string) => req<ImportedSkill>('POST', `/knowledge/skill-imports/${id}/${decision}`, { note }),
   taskKnowledge: (id: string) => req<KnowledgeUsage[]>('GET', `/tasks/${id}/knowledge`),
   taskHistory: (id: string) => req<{ reviews: TaskReview[]; runs: AgentRun[] }>('GET', `/tasks/${id}/history`),
   usage: (projectId: string) => req<{ summary: UsageSummary; runs: AgentRun[] }>('GET', `/projects/${projectId}/usage`),
 };
+
+export interface ImportBundle {
+  id: string;
+  title: string;
+  retrievedAt: string;
+  baselines: Record<string, string>;
+  sources: Record<string, { repo: string; commit: string; upstreamVersion: string; license: string }>;
+  items: { id: string; kind: 'reference' | 'supplement'; title: string; engine: string | null; status: string; sourceId: string | null; importId: string | null; targetSkillId?: string }[];
+}

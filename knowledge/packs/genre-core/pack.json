@@ -1,0 +1,12 @@
+{
+  "id": "genre-core",
+  "title": "Genre knowledge (shared)",
+  "layer": "genre",
+  "description": "Read-only genre references shared across departments that build or test genre-specific features. Shares existing documents from other packs instead of copying them.",
+  "defaultDepartments": ["designer", "programmer", "qa", "director"],
+  "tools": [],
+  "sharedDocs": ["design.genre-design"],
+  "version": "1.0",
+  "license": "Pixel Studio internal",
+  "trust": "internal"
+}

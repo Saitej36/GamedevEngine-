@@ -9,7 +9,7 @@ export type KnowledgeOrigin = 'pack' | 'external' | 'project';
  * project   — this project's own workspace documents
  */
 export type KnowledgeTrust = 'internal' | 'official' | 'community' | 'project';
-export type KnowledgeLayer = 'studio' | 'role' | 'tool';
+export type KnowledgeLayer = 'studio' | 'role' | 'tool' | 'genre';
 
 export interface KnowledgeDocMeta {
   id: string;
@@ -27,6 +27,8 @@ export interface KnowledgePack {
   tools: string[];
   /** Engine version ranges this pack was written for, e.g. { unreal: ">=5.4 <5.5" }. */
   engineVersions: Record<string, string>;
+  /** Documents owned by another pack that this pack also makes readable (no copies). */
+  sharedDocs: string[];
   version: string;
   license: string;
   trust: KnowledgeTrust;
@@ -67,7 +69,7 @@ export interface Skill extends SkillMeta {
   file: string;
 }
 
-export type SourceKind = 'docs_site' | 'github' | 'markdown' | 'pdf' | 'example_project' | 'internal_doc';
+export type SourceKind = 'docs_site' | 'github' | 'markdown' | 'pdf' | 'example_project' | 'internal_doc' | 'repo_import';
 
 export interface KnowledgeSource {
   id: string;
@@ -90,6 +92,13 @@ export interface KnowledgeSource {
   /** Engine this source documents (if engine-specific) and the version range it applies to. */
   engine: string;
   engineVersions: string;
+  /** Owner review state. Agents only see approved sources. Owner-registered sources are approved on creation. */
+  reviewStatus: 'pending_review' | 'approved' | 'rejected';
+  bundleId: string;
+  bundleItem: string;
+  contentHash: string;
+  lintFindings: { severity: 'block' | 'warn'; rule: string; detail: string }[];
+  reviewedAt: string | null;
 }
 
 /** One retrieved section as handed to an agent. */
@@ -157,6 +166,11 @@ export interface RoutingDecision {
 /** An externally sourced skill waiting for (or past) owner review. Never available to agents unless approved. */
 export interface ImportedSkill extends SkillMeta {
   id: string;
+  /** skill: a new skill · supplement: extra guidance appended to an existing studio skill. */
+  kind: 'skill' | 'supplement';
+  /** For supplements: the existing skill it extends. */
+  targetSkillId: string;
+  bundleId: string;
   skillId: string;
   role: AgentId;
   title: string;
@@ -166,6 +180,24 @@ export interface ImportedSkill extends SkillMeta {
   submittedAt: string;
   reviewedAt: string | null;
   reviewNote: string;
+}
+
+/** Automatic check of [K:…] citations in a run's deliverable. */
+export interface CitationCheck {
+  id: string;
+  runId: string | null;
+  projectId: string | null;
+  taskId: string | null;
+  agentId: AgentId;
+  /** ok · missing (references were provided, nothing cited) · invalid (cites references this run never had) · declared-none ([K:none]) · not-needed (no references provided) */
+  status: 'ok' | 'missing' | 'invalid' | 'declared-none' | 'not-needed';
+  cited: string[];
+  invalid: { ref: string; reason: string }[];
+  /** References the agent explicitly searched or read but did not cite. */
+  uncited: string[];
+  filesChecked: string[];
+  summary: string;
+  createdAt: string;
 }
 
 export interface KnowledgeUsage {

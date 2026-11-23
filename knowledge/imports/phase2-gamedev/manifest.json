@@ -1,0 +1,601 @@
+{
+  "id": "phase2-gamedev",
+  "title": "Phase 2 game-development knowledge (adapted to Pixel Studio baselines)",
+  "retrievedAt": "2026-11-23",
+  "baselines": {
+    "unreal": ">=5.4 <5.5",
+    "unity": ">=2022.3 <7000",
+    "phaser": ">=3.90 <4"
+  },
+  "sources": {
+    "gamedev-skills": {
+      "repo": "https://github.com/gamedev-skills/awesome-gamedev-agent-skills",
+      "commit": "c6ca6c41c839b68319ffc08430b99ab768debc32",
+      "upstreamVersion": "2.0.0",
+      "license": "Apache-2.0",
+      "licenseFile": "licenses/awesome-gamedev-agent-skills.LICENSE",
+      "noticeFile": "licenses/awesome-gamedev-agent-skills.NOTICE"
+    },
+    "ccgs": {
+      "repo": "https://github.com/Donchitos/claude-code-game-studios",
+      "commit": "abc0de79d6ceb0b5d7aa693945849b3937afbe6a",
+      "upstreamVersion": "1.3.0",
+      "license": "MIT",
+      "licenseFile": "licenses/claude-code-game-studios.LICENSE"
+    }
+  },
+  "references": [
+    {
+      "id": "unreal-cpp-blueprints",
+      "title": "Unreal 5.4 C++ and Blueprints: reflection, GC safety and the C++/Blueprint split",
+      "engine": "unreal",
+      "disciplines": [
+        "combat",
+        "performance"
+      ],
+      "sources": [
+        {
+          "source": "gamedev-skills",
+          "paths": [
+            "skills/unreal/unreal-cpp-gameplay/SKILL.md",
+            "skills/unreal/unreal-cpp-gameplay/references/components-and-gc.md",
+            "skills/unreal/unreal-blueprints/SKILL.md",
+            "skills/unreal/unreal-blueprints/references/communication.md"
+          ]
+        },
+        {
+          "source": "ccgs",
+          "paths": [
+            "docs/engine-reference/unreal/current-best-practices.md",
+            "docs/engine-reference/unreal/breaking-changes.md",
+            "docs/engine-reference/unreal/deprecated-apis.md"
+          ]
+        }
+      ],
+      "changes": "Re-targeted from UE 5.8 to 5.4, removing the C++20 floor, UE_LOGF, the 5.9 Blueprint scripting APIs, editor MCP and toolchain tables; added BlueprintImplementableEvent/NativeEvent guidance; moved build and test commands to a human-only section.",
+      "departments": [
+        "programmer",
+        "qa",
+        "director"
+      ]
+    },
+    {
+      "id": "unreal-enhanced-input",
+      "title": "Unreal 5.4 Enhanced Input: actions, mapping contexts, triggers and buffering",
+      "engine": "unreal",
+      "disciplines": [
+        "input",
+        "feel"
+      ],
+      "sources": [
+        {
+          "source": "gamedev-skills",
+          "paths": [
+            "skills/unreal/unreal-enhanced-input/SKILL.md",
+            "skills/unreal/unreal-enhanced-input/references/cpp-setup.md"
+          ]
+        }
+      ],
+      "changes": "Re-targeted from UE 5.8 to 5.4, marking 5.8-only changes (Input Debugger, Combo deprecation, touch fix) as not on 5.4, adding an input-buffering pattern and verify lines for the User Settings rebinding APIs, and removing shell/test commands.",
+      "departments": [
+        "programmer",
+        "qa",
+        "director"
+      ]
+    },
+    {
+      "id": "unreal-behavior-trees",
+      "title": "Unreal 5.4 Behavior Trees, Blackboards, EQS and AI Perception",
+      "engine": "unreal",
+      "disciplines": [
+        "ai"
+      ],
+      "sources": [
+        {
+          "source": "gamedev-skills",
+          "paths": [
+            "skills/unreal/unreal-behavior-trees/SKILL.md",
+            "skills/unreal/unreal-behavior-trees/references/custom-bttask.md"
+          ]
+        }
+      ],
+      "changes": "Re-targeted from UE 5.8 to 5.4, removing the 5.8/5.9 StateTree and EQS features, reducing StateTree to a verify-on-5.4 note, adding an AI Perception section and removing find/grep and headless test commands.",
+      "departments": [
+        "programmer",
+        "qa",
+        "director"
+      ]
+    },
+    {
+      "id": "unity-csharp-core",
+      "title": "Unity C# core for Unity 6 (6000.0) and 2022.3 LTS: lifecycle, serialization, ScriptableObjects, asmdefs and tests",
+      "engine": "unity",
+      "disciplines": [
+        "save",
+        "performance"
+      ],
+      "sources": [
+        {
+          "source": "gamedev-skills",
+          "paths": [
+            "skills/unity/unity-csharp-scripting/SKILL.md",
+            "skills/unity/unity-csharp-scripting/references/agent-checks.md",
+            "skills/unity/unity-csharp-scripting/references/lifecycle-and-coroutines.md",
+            "skills/unity/unity-scriptableobjects/SKILL.md",
+            "skills/unity/unity-scriptableobjects/references/event-channels.md"
+          ]
+        },
+        {
+          "source": "ccgs",
+          "paths": [
+            "docs/engine-reference/unity/VERSION.md",
+            "docs/engine-reference/unity/breaking-changes.md",
+            "docs/engine-reference/unity/deprecated-apis.md",
+            "docs/engine-reference/unity/current-best-practices.md"
+          ]
+        }
+      ],
+      "changes": "Re-targeted from Unity 6.3 to Unity 6 (6000.0) and 2022.3 with a table giving both API forms (Find*, velocity, PhysicsMaterial, Awaitable, project-wide actions), removing the Python checker, Unity CLI and shell steps and keeping batch-mode commands human-only.",
+      "departments": [
+        "programmer",
+        "qa",
+        "director"
+      ]
+    },
+    {
+      "id": "unity-input-physics",
+      "title": "Unity Input System and physics for Unity 6 (6000.0) and 2022.3 LTS",
+      "engine": "unity",
+      "disciplines": [
+        "input",
+        "feel"
+      ],
+      "sources": [
+        {
+          "source": "gamedev-skills",
+          "paths": [
+            "skills/unity/unity-input-system/SKILL.md",
+            "skills/unity/unity-input-system/references/rebinding.md",
+            "skills/unity/unity-physics/SKILL.md",
+            "skills/unity/unity-physics/references/physics-2d.md",
+            "skills/unity/unity-physics/references/raycasting-and-joints.md"
+          ]
+        }
+      ],
+      "changes": "Re-targeted from Unity 6.3 and Input System 1.20 to 6000.0 and 2022.3, adding package-version verify lines, a 2022.3-vs-Unity-6 physics API table and Unity-6-only marks (project-wide actions, linearVelocityX, Slide), and removing CLI, low-level 2D physics and shell content.",
+      "departments": [
+        "programmer",
+        "qa",
+        "director"
+      ]
+    },
+    {
+      "id": "phaser-core-3-90",
+      "title": "Phaser 3.90 core: game config, scene lifecycle, loader and scene flow",
+      "engine": "phaser",
+      "disciplines": [
+        "ui",
+        "art-pipeline"
+      ],
+      "sources": [
+        {
+          "source": "gamedev-skills",
+          "paths": [
+            "skills/web-engines/phaser-core/SKILL.md",
+            "skills/web-engines/phaser-core/references/scene-flow.md"
+          ]
+        }
+      ],
+      "changes": "Re-targeted from Phaser 4.2 to 3.90 only, moving v4 filter/lighting/tint/TAU changes into a do-not-use section, marking the 4.2.1 keyboard diagnosis as verify-on-3.90 and replacing the package-manager/browser-automation smoke test with browser-console checks for the human.",
+      "departments": [
+        "programmer",
+        "qa",
+        "director"
+      ]
+    },
+    {
+      "id": "phaser-arcade-physics-3-90",
+      "title": "Phaser 3.90 Arcade Physics: bodies, colliders, pools, categories and tilemaps",
+      "engine": "phaser",
+      "disciplines": [
+        "combat",
+        "feel",
+        "level",
+        "performance"
+      ],
+      "sources": [
+        {
+          "source": "gamedev-skills",
+          "paths": [
+            "skills/web-engines/phaser-arcade-physics/SKILL.md",
+            "skills/web-engines/phaser-arcade-physics/references/bodies-and-collision.md"
+          ]
+        }
+      ],
+      "changes": "Re-targeted from Phaser 4.2.1 to 3.90, marking defaults checked only in v4 source as verify-on-3.90, adding tilemap collision and fixed-step/tunnelling sections and removing build and browser-automation commands.",
+      "departments": [
+        "programmer",
+        "qa",
+        "director"
+      ]
+    },
+    {
+      "id": "game-ai-behavior-trees",
+      "title": "Game AI: Decision Models, Behavior Trees and Utility AI",
+      "engine": null,
+      "disciplines": [
+        "ai",
+        "performance"
+      ],
+      "departments": [
+        "designer",
+        "programmer",
+        "qa",
+        "director"
+      ],
+      "sources": [
+        {
+          "source": "gamedev-skills",
+          "paths": [
+            "skills/disciplines/game-ai/SKILL.md",
+            "skills/disciplines/game-ai/references/fsm-perception-steering.md",
+            "skills/disciplines/ai-behavior-trees-utility-ai/SKILL.md",
+            "skills/disciplines/ai-behavior-trees-utility-ai/references/behavior-tree-core.md",
+            "skills/disciplines/ai-behavior-trees-utility-ai/references/utility-ai-system.md",
+            "skills/disciplines/ai-behavior-trees-utility-ai/references/best-practices-and-pitfalls.md"
+          ]
+        },
+        {
+          "source": "ccgs",
+          "paths": [
+            ".claude/rules/ai-code.md"
+          ]
+        }
+      ],
+      "changes": "Merged two AI skills and the AI code rules into one engine-neutral reference, with C# snippets only and notes for UE 5.4, Unity 6 / 2022.3 and Phaser 3.90."
+    },
+    {
+      "id": "procedural-generation",
+      "title": "Procedural Generation: Seeds, Layouts and Validation",
+      "engine": null,
+      "disciplines": [
+        "procgen",
+        "level"
+      ],
+      "departments": [
+        "designer",
+        "programmer",
+        "qa",
+        "director"
+      ],
+      "sources": [
+        {
+          "source": "gamedev-skills",
+          "paths": [
+            "skills/disciplines/procedural-gen/SKILL.md",
+            "skills/disciplines/procedural-gen/references/dungeon-generation.md",
+            "skills/disciplines/level-design/SKILL.md",
+            "skills/disciplines/level-design/references/pacing-and-flow.md"
+          ]
+        }
+      ],
+      "changes": "Translated Python snippets to C# and prose, added level-design soft-lock gating ideas and seed-sweep acceptance criteria, and re-targeted the engine RNG notes."
+    },
+    {
+      "id": "save-systems",
+      "title": "Save Systems: Schemas, Migration and Crash-Safe Writes",
+      "engine": null,
+      "disciplines": [
+        "save"
+      ],
+      "departments": [
+        "programmer",
+        "qa",
+        "producer",
+        "director"
+      ],
+      "sources": [
+        {
+          "source": "gamedev-skills",
+          "paths": [
+            "skills/disciplines/save-systems/SKILL.md",
+            "skills/disciplines/save-systems/references/versioning-and-migration.md"
+          ]
+        }
+      ],
+      "changes": "Moved storage notes from Unity 6.3 / UE 5.8 to Unity 6 / 2022.3 and UE 5.4, added Phaser web storage and run-versus-profile state, and removed headless and console commands."
+    },
+    {
+      "id": "game-feel",
+      "title": "Game Feel: Hit-Stop, Shake, Squash and Responsiveness",
+      "engine": null,
+      "disciplines": [
+        "feel",
+        "combat",
+        "input"
+      ],
+      "departments": [
+        "designer",
+        "programmer",
+        "artist",
+        "qa",
+        "director"
+      ],
+      "sources": [
+        {
+          "source": "gamedev-skills",
+          "paths": [
+            "skills/disciplines/game-feel/SKILL.md",
+            "skills/disciplines/game-feel/references/feedback-recipes.md",
+            "skills/disciplines/input-systems/references/buffering-and-accessibility.md"
+          ]
+        },
+        {
+          "source": "ccgs",
+          "paths": [
+            ".claude/docs/templates/guidance/game-design-document-guide.md",
+            ".claude/docs/templates/accessibility-requirements.md"
+          ]
+        }
+      ],
+      "changes": "Replaced Godot code with C#, added the tier table, latency/buffer/coyote guidance from the GDD feel template and accessibility toggles, and added notes for UE 5.4, Unity and Phaser."
+    },
+    {
+      "id": "input-systems",
+      "title": "Input Systems: Actions, Buffering, Rebinding and Devices",
+      "engine": null,
+      "disciplines": [
+        "input",
+        "ui"
+      ],
+      "departments": [
+        "programmer",
+        "designer",
+        "qa",
+        "director"
+      ],
+      "sources": [
+        {
+          "source": "gamedev-skills",
+          "paths": [
+            "skills/disciplines/input-systems/SKILL.md",
+            "skills/disciplines/input-systems/references/buffering-and-accessibility.md"
+          ]
+        }
+      ],
+      "changes": "Replaced Godot InputMap code with C# and prose, turned the binding audit script into a checklist, and added notes for UE Enhanced Input, the Unity Input System and Phaser input."
+    },
+    {
+      "id": "camera-systems",
+      "title": "Camera Systems: Follow, Dead Zones, Look-Ahead and Pixel-Perfect 2D",
+      "engine": null,
+      "disciplines": [
+        "feel",
+        "art-pipeline"
+      ],
+      "departments": [
+        "programmer",
+        "designer",
+        "artist",
+        "director"
+      ],
+      "sources": [
+        {
+          "source": "gamedev-skills",
+          "paths": [
+            "skills/disciplines/camera-systems/SKILL.md",
+            "skills/disciplines/camera-systems/references/follow-and-framing.md",
+            "skills/disciplines/game-ui-ux/SKILL.md"
+          ]
+        }
+      ],
+      "changes": "Replaced Godot code with C#, re-targeted Cinemachine notes to Unity 6 / 2022.3, added a labelled pixel-perfect section, and added UE 5.4 spring-arm and Phaser camera notes."
+    },
+    {
+      "id": "physics-tuning",
+      "title": "Physics Tuning: Timestep, Scale, Jump Arcs and Tunnelling",
+      "engine": null,
+      "disciplines": [
+        "feel",
+        "performance",
+        "level"
+      ],
+      "departments": [
+        "programmer",
+        "designer",
+        "qa",
+        "director"
+      ],
+      "sources": [
+        {
+          "source": "gamedev-skills",
+          "paths": [
+            "skills/disciplines/physics-tuning/SKILL.md",
+            "skills/disciplines/physics-tuning/references/timestep-and-ccd.md",
+            "skills/disciplines/level-design/SKILL.md"
+          ]
+        }
+      ],
+      "changes": "Removed Godot test scripts and commands, translated the accumulator loop to TypeScript, added units/scale, jump-arc formulas and determinism caveats, and added notes for UE 5.4, Unity and Phaser Arcade."
+    },
+    {
+      "id": "game-ui-ux",
+      "title": "Game UI/UX: HUDs, Menus, Scaling, Focus and Accessibility",
+      "engine": null,
+      "disciplines": [
+        "ui",
+        "input"
+      ],
+      "departments": [
+        "designer",
+        "programmer",
+        "artist",
+        "qa",
+        "director"
+      ],
+      "sources": [
+        {
+          "source": "gamedev-skills",
+          "paths": [
+            "skills/disciplines/game-ui-ux/SKILL.md",
+            "skills/disciplines/game-ui-ux/references/layout-and-flow.md"
+          ]
+        },
+        {
+          "source": "ccgs",
+          "paths": [
+            ".claude/agents/ux-designer.md",
+            ".claude/rules/ui-code.md",
+            ".claude/docs/templates/accessibility-requirements.md"
+          ]
+        }
+      ],
+      "changes": "Removed Godot code and resolution-sweep commands, merged the UX checklist and UI code rules into an accessibility table, and added notes for UE UMG, Unity UGUI/UI Toolkit and Phaser."
+    },
+    {
+      "id": "performance-optimization",
+      "title": "Performance Optimization: Measure First, Then Fix One Bottleneck",
+      "engine": null,
+      "disciplines": [
+        "performance"
+      ],
+      "departments": [
+        "programmer",
+        "artist",
+        "qa",
+        "producer",
+        "director"
+      ],
+      "sources": [
+        {
+          "source": "gamedev-skills",
+          "paths": [
+            "skills/disciplines/performance-optimization/SKILL.md",
+            "skills/disciplines/performance-optimization/references/profiling-and-budgets.md"
+          ]
+        },
+        {
+          "source": "ccgs",
+          "paths": [
+            ".claude/skills/perf-profile/SKILL.md",
+            ".claude/agents/performance-analyst.md"
+          ]
+        }
+      ],
+      "changes": "Moved profiler notes from UE 5.8 / Unity 6.3 to UE 5.4 / Unity 6 / 2022.3, added browser DevTools for Phaser and the NOT ASSESSED reporting rule, and put UE console commands in a human-only section."
+    }
+  ],
+  "supplements": [
+    {
+      "id": "implement-gameplay-system",
+      "targetSkillId": "implement-gameplay-system",
+      "title": "Engine-specific verification for implement-gameplay-system (Unreal 5.4, Unity 6 / 2022.3, Phaser 3.90)",
+      "engine": null,
+      "disciplines": [
+        "combat",
+        "ai",
+        "input",
+        "save",
+        "progression",
+        "ui",
+        "feel"
+      ],
+      "sources": [
+        {
+          "source": "gamedev-skills",
+          "paths": [
+            "skills/unreal/unreal-cpp-gameplay/SKILL.md",
+            "skills/unreal/unreal-enhanced-input/SKILL.md",
+            "skills/unity/unity-csharp-scripting/SKILL.md",
+            "skills/unity/unity-csharp-scripting/references/agent-checks.md",
+            "skills/web-engines/phaser-core/SKILL.md"
+          ]
+        }
+      ],
+      "changes": "Turned the upstream Verify sections into engine-specific static pre-hand-off checks (headers/modules, serialization/meta/asmdefs, scene lifecycle) for agents that cannot compile, plus a mandatory honest compile/run status line; no shell steps."
+    },
+    {
+      "id": "optimize-mobile-game",
+      "targetSkillId": "optimize-mobile-game",
+      "title": "Supplement: Optimize a game for mobile (measure-first method)",
+      "engine": null,
+      "disciplines": [
+        "performance"
+      ],
+      "sources": [
+        {
+          "source": "gamedev-skills",
+          "paths": [
+            "skills/disciplines/performance-optimization/SKILL.md",
+            "skills/disciplines/performance-optimization/references/profiling-and-budgets.md"
+          ]
+        },
+        {
+          "source": "ccgs",
+          "paths": [
+            ".claude/skills/perf-profile/SKILL.md",
+            ".claude/agents/performance-analyst.md"
+          ]
+        }
+      ],
+      "changes": "Adds input FOUND/ABSENT checks, uncapped release-build measurement, CPU/GPU side selection, budget proposals for the Producer, and NOT ASSESSED failure handling to the base skill."
+    },
+    {
+      "id": "design-level",
+      "targetSkillId": "design-level",
+      "title": "Supplement: Design a level (procedurally generated levels)",
+      "engine": null,
+      "disciplines": [
+        "level",
+        "procgen"
+      ],
+      "sources": [
+        {
+          "source": "gamedev-skills",
+          "paths": [
+            "skills/disciplines/level-design/SKILL.md",
+            "skills/disciplines/level-design/references/pacing-and-flow.md",
+            "skills/disciplines/procedural-gen/SKILL.md",
+            "skills/disciplines/procedural-gen/references/dungeon-generation.md"
+          ]
+        }
+      ],
+      "changes": "Adds a gating-graph table, key-order and drop-landing soft-lock checks, pacing rules as data, and seed-sweep acceptance criteria for generated levels."
+    },
+    {
+      "id": "create-test-plan",
+      "targetSkillId": "create-test-plan",
+      "title": "Supplement: Create a test plan (story types and verification checks)",
+      "engine": null,
+      "disciplines": [
+        "save",
+        "procgen",
+        "input",
+        "ai",
+        "performance",
+        "feel",
+        "ui"
+      ],
+      "sources": [
+        {
+          "source": "ccgs",
+          "paths": [
+            ".claude/skills/qa-plan/SKILL.md",
+            ".claude/docs/templates/test-plan.md"
+          ]
+        },
+        {
+          "source": "gamedev-skills",
+          "paths": [
+            "skills/disciplines/save-systems/SKILL.md",
+            "skills/disciplines/procedural-gen/SKILL.md",
+            "skills/disciplines/input-systems/SKILL.md",
+            "skills/disciplines/physics-tuning/SKILL.md",
+            "skills/disciplines/ai-behavior-trees-utility-ai/SKILL.md"
+          ]
+        }
+      ],
+      "changes": "Adds Logic/Integration/Visual-Feel/UI/Config story classification with default evidence, smoke scope, discipline verification cases and an empty-scope NOT ASSESSED rule, keeping the base skill's honest not-executed statuses."
+    }
+  ]
+}

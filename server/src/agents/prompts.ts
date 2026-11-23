@@ -1,4 +1,4 @@
-import type { AgentId, Milestone, Project, Task } from '@pixel/shared';
+import type { AgentId, CitationCheck, Milestone, Project, Task } from '@pixel/shared';
 import { AGENTS, WORKER_IDS } from '@pixel/shared';
 
 const WORKSPACE_LAYOUT = `Project workspace layout (your current working directory is the project root):
@@ -160,7 +160,7 @@ ${WORKSPACE_LAYOUT}
 ${projectContext(project, milestones)}`;
 }
 
-export function directorReviewPrompt(task: Task, report: string, files: string[]) {
+export function directorReviewPrompt(task: Task, report: string, files: string[], citation?: CitationCheck | null) {
   return `REVIEW REQUEST — a deliverable is ready for your review.
 
 Task ${task.id}: ${task.title}
@@ -176,7 +176,15 @@ ${report || '(no report)'}
 Files created or changed:
 ${files.length ? files.map((f) => `- ${f}`).join('\n') : '- (none detected)'}
 
-Review the actual files with Read/Glob/Grep; never rely on the agent report alone. Check every acceptance criterion
+${
+  citation
+    ? `AUTOMATIC CITATION CHECK (computed by the studio from the run's knowledge usage — trusted):
+Status: ${citation.status}. ${citation.summary}${citation.invalid.length ? `\nInvalid: ${citation.invalid.map((x) => `[K:${x.ref}] — ${x.reason}`).join('; ')}` : ''}
+${citation.status === 'missing' || citation.status === 'invalid' ? 'This check FAILED: you must request a revision and list the missing/invalid citations (the studio enforces this).' : 'Also check that cited references actually support the claims they are attached to.'}
+
+`
+    : ''
+}Review the actual files with Read/Glob/Grep; never rely on the agent report alone. Check every acceptance criterion
 in the task description against the files, one by one, and verify that numbers, file paths and cross-references the
 deliverable claims are actually true (e.g. referenced files exist, totals add up, code matches what the report says).
 

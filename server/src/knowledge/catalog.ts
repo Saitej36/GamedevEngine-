@@ -26,6 +26,8 @@ export interface CatalogPack {
   description: string;
   tools: string[];
   engineVersions: Record<string, string>;
+  /** Ids of documents owned by other packs that this pack also grants access to. */
+  sharedDocs: string[];
   version: string;
   license: string;
   trust: KnowledgeTrust;
@@ -180,7 +182,8 @@ export function loadCatalog(root: string): Catalog {
       const pack: CatalogPack = {
         id: String(m.id ?? dir),
         title: String(m.title ?? dir),
-        layer: (['studio', 'role', 'tool'].includes(String(m.layer)) ? m.layer : 'role') as KnowledgeLayer,
+        layer: (['studio', 'role', 'tool', 'genre'].includes(String(m.layer)) ? m.layer : 'role') as KnowledgeLayer,
+        sharedDocs: Array.isArray(m.sharedDocs) ? m.sharedDocs.map(String) : [],
         description: String(m.description ?? ''),
         tools: Array.isArray(m.tools) ? m.tools.map(String) : [],
         engineVersions:
@@ -221,6 +224,8 @@ export function loadCatalog(root: string): Catalog {
     if (seen.has(d.id)) errors.push(`duplicate doc id ${d.id}`);
     seen.add(d.id);
   }
+  for (const p of packs)
+    for (const id of p.sharedDocs) if (!seen.has(id)) errors.push(`pack ${p.id}: shared document ${id} does not exist`);
   const skillIds = new Set<string>();
   for (const s of skills) {
     if (skillIds.has(s.id)) errors.push(`duplicate skill id ${s.id}`);

@@ -310,6 +310,34 @@ export const MIGRATIONS: string[] = [
   );
   CREATE UNIQUE INDEX IF NOT EXISTS idx_skill_imports_version ON skill_imports(skill_id, version, source_commit);
   `,
+  // v7 — Phase 2: review status for imported sources, skill supplements, citation checks.
+  // Existing owner-registered sources keep working (review_status defaults to approved).
+  `
+  ALTER TABLE knowledge_sources ADD COLUMN review_status TEXT NOT NULL DEFAULT 'approved';
+  ALTER TABLE knowledge_sources ADD COLUMN bundle_id TEXT NOT NULL DEFAULT '';
+  ALTER TABLE knowledge_sources ADD COLUMN bundle_item TEXT NOT NULL DEFAULT '';
+  ALTER TABLE knowledge_sources ADD COLUMN content_hash TEXT NOT NULL DEFAULT '';
+  ALTER TABLE knowledge_sources ADD COLUMN lint_findings TEXT NOT NULL DEFAULT '[]';
+  ALTER TABLE knowledge_sources ADD COLUMN reviewed_at TEXT;
+  ALTER TABLE skill_imports ADD COLUMN kind TEXT NOT NULL DEFAULT 'skill';
+  ALTER TABLE skill_imports ADD COLUMN target_skill_id TEXT NOT NULL DEFAULT '';
+  ALTER TABLE skill_imports ADD COLUMN bundle_id TEXT NOT NULL DEFAULT '';
+  CREATE TABLE IF NOT EXISTS citation_checks (
+    id TEXT PRIMARY KEY,
+    run_id TEXT REFERENCES agent_runs(id) ON DELETE CASCADE,
+    project_id TEXT,
+    task_id TEXT,
+    agent_id TEXT NOT NULL,
+    status TEXT NOT NULL,
+    cited TEXT NOT NULL DEFAULT '[]',
+    invalid TEXT NOT NULL DEFAULT '[]',
+    uncited TEXT NOT NULL DEFAULT '[]',
+    files_checked TEXT NOT NULL DEFAULT '[]',
+    summary TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_citations_task ON citation_checks(task_id, created_at);
+  `,
 ];
 
 export type Db = DatabaseSync;

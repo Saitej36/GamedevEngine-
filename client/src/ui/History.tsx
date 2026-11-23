@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import type { AgentRun, KnowledgeUsage, RoutingDecision, TaskReview } from '@pixel/shared';
+import type { AgentRun, CitationCheck, KnowledgeUsage, RoutingDecision, TaskReview } from '@pixel/shared';
 import { AGENTS } from '@pixel/shared';
 import { api } from '../api/client';
 import { useStudio } from '../state/store';
@@ -34,7 +34,9 @@ export function TaskHistory({ taskId, updatedAt }: { taskId: string; updatedAt: 
   const [data, setData] = useState<{ reviews: TaskReview[]; runs: AgentRun[] } | null>(null);
   const [knowledge, setKnowledge] = useState<KnowledgeUsage[]>([]);
   const [routing, setRouting] = useState<RoutingDecision[]>([]);
+  const [citations, setCitations] = useState<CitationCheck[]>([]);
   useEffect(() => {
+    api.taskCitations(taskId).then(setCitations, () => setCitations([]));
     api.taskHistory(taskId).then(setData, () => setData(null));
     api.taskKnowledge(taskId).then(setKnowledge, () => setKnowledge([]));
     api.taskRouting(taskId).then(setRouting, () => setRouting([]));
@@ -88,6 +90,20 @@ export function TaskHistory({ taskId, updatedAt }: { taskId: string; updatedAt: 
                   <li key={i}>{x}</li>
                 ))}
               </ul>
+            </div>
+          ))}
+        </details>
+      )}
+      {citations.length > 0 && (
+        <details className="history-block">
+          <summary>
+            Citation checks ({citations.length}) — latest: <strong>{citations[citations.length - 1].status}</strong>
+          </summary>
+          {citations.map((c) => (
+            <div key={c.id} className={`small ${c.status === 'missing' || c.status === 'invalid' ? 'notice warn' : 'muted'}`}>
+              <strong>{(c.runId && runKind.get(c.runId)) ?? 'Run'}</strong> · {c.status} — {c.summary}
+              {c.cited.length > 0 && <div>Cited: {c.cited.map((x) => `[K:${x}]`).join(' ')}</div>}
+              <div className="muted">Checked: {c.filesChecked.join(', ')}</div>
             </div>
           ))}
         </details>

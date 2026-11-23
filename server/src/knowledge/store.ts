@@ -1,4 +1,4 @@
-import type { AgentId, ImportedSkill, KnowledgeSource, KnowledgeUsage, RoutingDecision, SourceKind } from '@pixel/shared';
+import type { AgentId, CitationCheck, ImportedSkill, KnowledgeSource, KnowledgeUsage, RoutingDecision, SourceKind } from '@pixel/shared';
 import { isAgentId } from '@pixel/shared';
 import type { Db } from '../db/db.js';
 import { HttpError, newId, nowIso } from '../util.js';
@@ -81,6 +81,18 @@ export class KnowledgeStore {
       retrievedAt: sn(r.retrieved_at),
       engine: s(r.engine),
       engineVersions: s(r.engine_versions),
+      reviewStatus: (s(r.review_status) || 'approved') as KnowledgeSource['reviewStatus'],
+      bundleId: s(r.bundle_id),
+      bundleItem: s(r.bundle_item),
+      contentHash: s(r.content_hash),
+      lintFindings: (() => {
+        try {
+          return JSON.parse(s(r.lint_findings) || '[]');
+        } catch {
+          return [];
+        }
+      })(),
+      reviewedAt: sn(r.reviewed_at),
       createdAt: s(r.created_at),
       documents: (
         this.db.prepare(`SELECT id, path, title, bytes FROM knowledge_documents WHERE source_id = ? ORDER BY path`).all(id) as Row[]
@@ -108,6 +120,44 @@ export class KnowledgeStore {
       .run(id, src.kind, src.name, src.url, src.version, src.license, src.trust, JSON.stringify(src.departments), JSON.stringify(src.includePaths), src.projectId, src.notes, src.engine ?? '', src.engineVersions ?? '', nowIso());
     return this.getSource(id);
   }
+  /** Bundle-imported source: always created/updated in quarantine (pending_review). */
+  findBundleSource(bundleId: string, item: string): KnowledgeSource | null {
+    const r = this.db.prepare(`SELECT * FROM knowledge_sources WHERE bundle_id = ? AND bundle_item = ?`).get(bundleId, item) as Row | undefined;
+    return r ? this.toSource(r) : null;
+  }
+  upsertBundleSource(
+    src: Pick<KnowledgeSource, 'name' | 'url' | 'version' | 'license' | 'departments' | 'includePaths' | 'notes' | 'engine' | 'engineVersions' | 'bundleId' | 'bundleItem' | 'contentHash' | 'lintFindings'>,
+  ): { source: KnowledgeSource; changed: boolean } {
+    const existing = this.findBundleSource(src.bundleId, src.bundleItem);
+    if (existing && existing.contentHash === src.contentHash) return { source: existing, changed: false };
+    const id = existing?.id ?? newId('src');
+    if (existing) {
+      // Content changed upstream (or locally): back to quarantine; the previous approval no longer applies.
+      this.db
+        .prepare(
+          `UPDATE knowledge_sources SET name=?, url=?, version=?, license=?, departments=?, include_paths=?, notes=?, engine=?, engine_versions=?,
+             content_hash=?, lint_findings=?, review_status='pending_review', reviewed_at=NULL, status='ready', error='', retrieved_at=? WHERE id=?`,
+        )
+        .run(src.name, src.url, src.version, src.license, JSON.stringify(src.departments), JSON.stringify(src.includePaths), src.notes, src.engine, src.engineVersions,
+          src.contentHash, JSON.stringify(src.lintFindings), nowIso(), id);
+    } else {
+      this.db
+        .prepare(
+          `INSERT INTO knowledge_sources (id, kind, name, url, version, license, trust, departments, include_paths, project_id, notes, engine, engine_versions,
+             status, retrieved_at, review_status, bundle_id, bundle_item, content_hash, lint_findings, created_at)
+           VALUES (?, 'repo_import', ?, ?, ?, ?, 'community', ?, ?, NULL, ?, ?, ?, 'ready', ?, 'pending_review', ?, ?, ?, ?, ?)`,
+        )
+        .run(id, src.name, src.url, src.version, src.license, JSON.stringify(src.departments), JSON.stringify(src.includePaths), src.notes, src.engine, src.engineVersions,
+          nowIso(), src.bundleId, src.bundleItem, src.contentHash, JSON.stringify(src.lintFindings), nowIso());
+    }
+    return { source: this.getSource(id), changed: true };
+  }
+  setSourceReview(id: string, status: KnowledgeSource['reviewStatus'], note?: string) {
+    const cur = this.getSource(id);
+    const notes = note ? `${cur.notes}${cur.notes ? '\n' : ''}Review (${status}): ${note}` : cur.notes;
+    this.db.prepare(`UPDATE knowledge_sources SET review_status = ?, reviewed_at = ?, notes = ? WHERE id = ?`).run(status, nowIso(), notes, id);
+    return this.getSource(id);
+  }
   updateSource(id: string, patch: Partial<Pick<KnowledgeSource, 'name' | 'version' | 'license' | 'trust' | 'departments' | 'enabled' | 'notes' | 'status' | 'error' | 'retrievedAt'>>) {
     const n = { ...this.getSource(id), ...patch };
     this.db
@@ -120,14 +170,14 @@ export class KnowledgeStore {
   deleteSource(id: string) {
     this.db.prepare(`DELETE FROM knowledge_sources WHERE id = ?`).run(id);
   }
-  replaceDocuments(sourceId: string, docs: { path: string; title: string; content: string }[]) {
+  replaceDocuments(sourceId: string, docs: { id?: string; path: string; title: string; content: string }[]) {
     this.db.exec('BEGIN');
     try {
       this.db.prepare(`DELETE FROM knowledge_documents WHERE source_id = ?`).run(sourceId);
       const ins = this.db.prepare(
         `INSERT INTO knowledge_documents (id, source_id, path, title, content, bytes, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
       );
-      for (const d of docs) ins.run(newId('kdoc'), sourceId, d.path, d.title, d.content, Buffer.byteLength(d.content), nowIso());
+      for (const d of docs) ins.run(d.id ?? newId('kdoc'), sourceId, d.path, d.title, d.content, Buffer.byteLength(d.content), nowIso());
       this.db.exec('COMMIT');
     } catch (e) {
       this.db.exec('ROLLBACK');
@@ -231,6 +281,9 @@ export class KnowledgeStore {
       disciplines: j(r.disciplines, []),
       genres: j(r.genres, []),
       engineDependent: Number(r.engine_dependent) === 1,
+      kind: (s(r.kind) || 'skill') as ImportedSkill['kind'],
+      targetSkillId: s(r.target_skill_id),
+      bundleId: s(r.bundle_id),
       approval: s(r.status) as ImportedSkill['approval'],
       origin: 'imported',
       lintFindings: j(r.lint_findings, []),
@@ -239,18 +292,21 @@ export class KnowledgeStore {
       reviewNote: s(r.review_note),
     };
   }
-  addImport(i: Omit<ImportedSkill, 'id' | 'approval' | 'origin' | 'submittedAt' | 'reviewedAt' | 'reviewNote'>): ImportedSkill {
+  addImport(
+    i: Omit<ImportedSkill, 'id' | 'approval' | 'origin' | 'submittedAt' | 'reviewedAt' | 'reviewNote' | 'kind' | 'targetSkillId' | 'bundleId'> &
+      Partial<Pick<ImportedSkill, 'kind' | 'targetSkillId' | 'bundleId'>>,
+  ): ImportedSkill {
     const id = newId('simp');
     this.db
       .prepare(
         `INSERT INTO skill_imports (id, skill_id, version, role, title, summary, body, source_repo, source_commit, license, engines,
-           engine_versions, disciplines, genres, engine_dependent, status, lint_findings, submitted_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'quarantined', ?, ?)`,
+           engine_versions, disciplines, genres, engine_dependent, status, lint_findings, submitted_at, kind, target_skill_id, bundle_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'quarantined', ?, ?, ?, ?, ?)`,
       )
       .run(
         id, i.skillId, i.version, i.role, i.title, i.summary, i.body, i.sourceRepo, i.sourceCommit, i.license,
         JSON.stringify(i.engines), JSON.stringify(i.engineVersions), JSON.stringify(i.disciplines), JSON.stringify(i.genres),
-        i.engineDependent ? 1 : 0, JSON.stringify(i.lintFindings), nowIso(),
+        i.engineDependent ? 1 : 0, JSON.stringify(i.lintFindings), nowIso(), i.kind ?? 'skill', i.targetSkillId ?? '', i.bundleId ?? '',
       );
     return this.getImport(id);
   }
@@ -269,6 +325,54 @@ export class KnowledgeStore {
   setImportStatus(id: string, status: ImportedSkill['approval'], note: string) {
     this.db.prepare(`UPDATE skill_imports SET status = ?, review_note = ?, reviewed_at = ? WHERE id = ?`).run(status, note, nowIso(), id);
     return this.getImport(id);
+  }
+
+  findBundleImport(bundleId: string, skillId: string): ImportedSkill | null {
+    const r = this.db.prepare(`SELECT * FROM skill_imports WHERE bundle_id = ? AND skill_id = ? ORDER BY submitted_at DESC LIMIT 1`).get(bundleId, skillId) as Row | undefined;
+    return r ? this.toImport(r) : null;
+  }
+
+  // -- citation checks
+  addCitationCheck(c: Omit<CitationCheck, 'id' | 'createdAt'>): CitationCheck {
+    const id = newId('cite');
+    this.db
+      .prepare(
+        `INSERT INTO citation_checks (id, run_id, project_id, task_id, agent_id, status, cited, invalid, uncited, files_checked, summary, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(id, c.runId, c.projectId, c.taskId, c.agentId, c.status, JSON.stringify(c.cited), JSON.stringify(c.invalid), JSON.stringify(c.uncited),
+        JSON.stringify(c.filesChecked), c.summary, nowIso());
+    return this.listCitationChecks({ id })[0];
+  }
+  listCitationChecks(f: { id?: string; taskId?: string; runId?: string }): CitationCheck[] {
+    const where: string[] = [];
+    const args: string[] = [];
+    if (f.id) (where.push('id = ?'), args.push(f.id));
+    if (f.taskId) (where.push('task_id = ?'), args.push(f.taskId));
+    if (f.runId) (where.push('run_id = ?'), args.push(f.runId));
+    const j = (v: unknown) => {
+      try {
+        return JSON.parse(s(v) || '[]');
+      } catch {
+        return [];
+      }
+    };
+    return (
+      this.db.prepare(`SELECT * FROM citation_checks ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY created_at, rowid`).all(...args) as Row[]
+    ).map((r) => ({
+      id: s(r.id),
+      runId: sn(r.run_id),
+      projectId: sn(r.project_id),
+      taskId: sn(r.task_id),
+      agentId: s(r.agent_id) as AgentId,
+      status: s(r.status) as CitationCheck['status'],
+      cited: j(r.cited),
+      invalid: j(r.invalid),
+      uncited: j(r.uncited),
+      filesChecked: j(r.files_checked),
+      summary: s(r.summary),
+      createdAt: s(r.created_at),
+    }));
   }
 
   // -- usage

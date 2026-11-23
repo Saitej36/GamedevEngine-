@@ -260,6 +260,7 @@ export function apiRouter(store: Store, studio: Studio, hub: Hub) {
   r.get('/tasks/:id/history', wrap((req) => studio.taskHistory(String(req.params.id))));
   r.get('/tasks/:id/knowledge', wrap((req) => studio.taskKnowledge(String(req.params.id))));
   r.get('/tasks/:id/routing', wrap((req) => studio.taskRouting(String(req.params.id))));
+  r.get('/tasks/:id/citations', wrap((req) => studio.citationChecks(String(req.params.id))));
 
   // -- knowledge library ----------------------------------------------------
   const kn = () => {
@@ -339,6 +340,18 @@ export function apiRouter(store: Store, studio: Studio, hub: Hub) {
   r.post('/knowledge/skill-imports/:id/approve', wrap((req) => kn().approveImport(String(req.params.id), str(req.body as Body, 'note', { max: 2000 }))));
   r.post('/knowledge/skill-imports/:id/reject', wrap((req) => kn().rejectImport(String(req.params.id), str(req.body as Body, 'note', { max: 2000 }))));
   r.get('/knowledge/sources', wrap(() => kn().sources()));
+  // Import bundles (adapted third-party material in knowledge/imports): import = quarantine only; the owner reviews each item.
+  r.get('/knowledge/import-bundles', wrap(() => kn().bundles()));
+  r.post('/knowledge/import-bundles/:id/import', wrap((req) => kn().importBundle(String(req.params.id))));
+  r.post(
+    '/knowledge/sources/:id/review',
+    wrap((req) => {
+      const b = req.body as Body;
+      const decision = str(b, 'decision');
+      if (decision !== 'approve' && decision !== 'reject') throw new HttpError(400, 'decision must be approve or reject');
+      return kn().reviewSource(String(req.params.id), decision, str(b, 'note', { max: 2000 }));
+    }),
+  );
   r.post(
     '/knowledge/sources',
     wrap(async (req) => {

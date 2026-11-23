@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { AgentId, ImportedSkill, KnowledgeHit, KnowledgePack, KnowledgeSource, Skill, SourceKind } from '@pixel/shared';
 import { AGENTS, AGENT_IDS } from '@pixel/shared';
-import { api, type RoutingPreview } from '../api/client';
+import { api, type ImportBundle, type RoutingPreview } from '../api/client';
 import { useStudio } from '../state/store';
 import { Avatar } from './Avatar';
 import { MarkdownDoc } from './MarkdownDoc';
@@ -186,7 +186,7 @@ function ReviewQueue({ act }: { act: Act }) {
       <div className="section-title">Imported skills — review queue</div>
       <p className="muted small">
         Skills from external repositories wait here in quarantine and are never shown to agents until you approve them. Skills with blocking findings
-        (shell or install commands, permission bypasses, unpinned source, missing license or sections) cannot be approved. No skills are imported in this phase.
+        (shell or install commands, permission bypasses, unpinned source, missing license or sections) cannot be approved. Supplements add imported guidance to an existing studio skill (the skill id and its history stay unchanged).
       </p>
       {!items ? (
         <div className="muted small">Loading…</div>
@@ -196,7 +196,7 @@ function ReviewQueue({ act }: { act: Act }) {
         items.map((i) => (
           <div key={i.id} className="import-row">
             <div>
-              <strong>{i.title}</strong> <code>{i.skillId}</code> v{i.version} · {AGENTS[i.role].title} · <span className="pill">{i.approval}</span>
+              {i.kind === 'supplement' && <span className="pill">supplement → {i.targetSkillId}</span>} <strong>{i.title}</strong> <code>{i.skillId}</code> v{i.version} · {AGENTS[i.role].title} · <span className="pill">{i.approval}</span>
             </div>
             <div className="muted small">
               {i.sourceRepo} @ {i.sourceCommit || 'unpinned'} · {i.license || 'no license'} · engines {i.engines.join(', ') || 'any'}
@@ -319,7 +319,46 @@ const KIND_LABEL: Record<SourceKind, string> = {
   markdown: 'Markdown documents',
   pdf: 'PDF guide',
   internal_doc: 'Internal studio document',
+  repo_import: 'Adapted repository import (bundle)',
 };
+
+/** Import bundles: adapted third-party material. Importing only quarantines; each item needs owner review. */
+function Bundles({ act }: { act: Act }) {
+  const [bundles, setBundles] = useState<ImportBundle[] | null>(null);
+  const load = () => api.importBundles().then(setBundles, () => setBundles([]));
+  useEffect(() => {
+    void load();
+  }, []);
+  if (!bundles?.length) return null;
+  return (
+    <>
+      {bundles.map((b) => (
+        <div key={b.id} className="card">
+          <div className="dash-head">
+            <strong>{b.title}</strong>
+            <span className="pill">bundle {b.id}</span>
+            <span className="grow" />
+            <button className="btn" onClick={() => act(async () => { await api.importBundle(b.id); await load(); }, 'Bundle copied into quarantine')}>
+              Import into quarantine
+            </button>
+          </div>
+          <div className="muted small">
+            Retrieved {b.retrievedAt} · baselines {Object.entries(b.baselines).map(([e, v]) => `${e} ${v}`).join(', ')}
+          </div>
+          {Object.entries(b.sources).map(([k, s]) => (
+            <div key={k} className="muted small">
+              {s.repo} @ <code>{s.commit}</code> · v{s.upstreamVersion} · {s.license}
+            </div>
+          ))}
+          <div className="muted small">
+            {b.items.filter((i) => i.status === 'approved').length} approved · {b.items.filter((i) => i.status === 'pending_review' || i.status === 'quarantined').length} awaiting review ·{' '}
+            {b.items.filter((i) => i.status === 'not_imported').length} not imported. References are reviewed below; supplements in Skills → review queue.
+          </div>
+        </div>
+      ))}
+    </>
+  );
+}
 
 function Sources({ data, act, setViewer }: { data: Data; act: Act; setViewer: (v: { title: string; body: string; meta?: string }) => void }) {
   const projects = useStudio((s) => s.projects);
@@ -480,11 +519,13 @@ function Sources({ data, act, setViewer }: { data: Data; act: Act; setViewer: (v
           </button>
         </div>
       </div>
+      <Bundles act={act} />
       {data.sources.map((s) => (
         <div key={s.id} className="card">
           <div className="dash-head">
             <strong>{s.name}</strong>
             <span className="pill">{TRUST_LABEL[s.trust]}</span>
+            {s.reviewStatus !== 'approved' && <span className={`pill ${s.reviewStatus === 'rejected' ? 'st-failed' : ''}`}>{s.reviewStatus === 'pending_review' ? 'quarantine — not visible to agents' : s.reviewStatus}</span>}
             <span className={`pill ${s.status === 'ready' ? 'st-done' : s.status === 'error' ? 'st-failed' : ''}`}>{s.status}</span>
             <span className="grow" />
             <label className="check">
@@ -502,6 +543,24 @@ function Sources({ data, act, setViewer }: { data: Data; act: Act; setViewer: (v
           <div className="muted small">Departments: {s.departments.map((d) => AGENTS[d].title).join(', ')}</div>
           {s.notes && <div className="muted small">{s.notes}</div>}
           {s.error && <div className="notice error">{s.error}</div>}
+          {s.includePaths.length > 0 && s.kind === 'repo_import' && <div className="muted small">Original paths: {s.includePaths.join(', ')}</div>}
+          {s.lintFindings.map((f, n) => (
+            <div key={n} className={`small ${f.severity === 'block' ? 'error-text' : 'muted'}`}>
+              {f.severity === 'block' ? '⛔' : '⚠'} {f.rule}: {f.detail}
+            </div>
+          ))}
+          {s.reviewStatus === 'pending_review' && (
+            <div className="actions">
+              <span className="muted small">Read the document before approving. Approval makes it searchable for the listed departments.</span>
+              <span className="grow" />
+              <button className="btn danger ghost" onClick={() => act(() => api.reviewSource(s.id, 'reject', ''), 'Rejected')}>
+                Reject
+              </button>
+              <button className="btn primary" disabled={s.lintFindings.some((f) => f.severity === 'block')} onClick={() => act(() => api.reviewSource(s.id, 'approve', ''), 'Approved for agent use')}>
+                Approve
+              </button>
+            </div>
+          )}
           <div className="doc-list">
             {s.documents.map((d) => (
               <button

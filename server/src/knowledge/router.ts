@@ -188,6 +188,41 @@ export function textEngines(text: string): { engine: EngineId; version: string |
   });
 }
 
+const ENGINE_NAME: Record<string, string> = {
+  unity: String.raw`unity(?:\s*(?:6(?:\.\d+)?|20\d\d(?:\.\d+)?))?`,
+  unreal: String.raw`(?:unreal(?:\s+engine)?|ue)\s*(?:5(?:\.\d+)?|4(?:\.\d+)?)?`,
+  phaser: String.raw`phaser(?:\s*\d+(?:\.\d+)*)?`,
+  godot: String.raw`godot(?:\s*\d+(?:\.\d+)?)?`,
+};
+
+/**
+ * Engines a task explicitly REQUESTS (as opposed to merely mentions): "implement X in Phaser", "using Unity 6",
+ * "port this to Unreal", "target Phaser 3.60", "Phaser implementation of …". Incidental mentions such as
+ * "make it feel like the Unity prototype" are not requests.
+ */
+export function explicitEngineRequests(text: string): { engine: EngineId; version: string | null; phrase: string }[] {
+  const out: { engine: EngineId; version: string | null; phrase: string }[] = [];
+  for (const [engine, name] of Object.entries(ENGINE_NAME)) {
+    const patterns = [
+      // in / using / with / for / via / on <engine> — but not "like the <engine> prototype"
+      new RegExp(String.raw`\b(?:in|using|with|via|on|targeting|target|for)\s+(?:the\s+)?(${name})\b(?!\s+(?:prototype|version of the|game we|demo|reference|example|clone))`, 'i'),
+      new RegExp(String.raw`\b(?:port|convert|migrate|rewrite|switch|move|re-?implement|upgrade)\b[^.\n]{0,60}?\b(?:to|into|in)\s+(${name})\b`, 'i'),
+      new RegExp(String.raw`\b(${name})\s+(?:implementation|project|scene|plugin|module|script|code|build|version)\s+(?:of|for)\b`, 'i'),
+    ];
+    for (const re of patterns) {
+      const m = text.match(re);
+      if (!m) continue;
+      // Skip negated requests ("not in Phaser", "instead of Unity", "unlike Phaser").
+      const before = text.slice(Math.max(0, (m.index ?? 0) - 14), m.index ?? 0);
+      if (/\b(?:not|instead of|unlike|rather than|no)\s*$/i.test(before) || /\bnot\s+(?:in|using|with)\s/i.test(m[0])) continue;
+      const v = textEngines(m[1])[0]?.version ?? null;
+      out.push({ engine: engine as EngineId, version: v, phrase: m[0].trim() });
+      break;
+    }
+  }
+  return out;
+}
+
 // ---------------------------------------------------------------------------
 // Engine resolution
 // ---------------------------------------------------------------------------
@@ -203,6 +238,11 @@ export interface EngineResolution {
   signals: { files: EngineSignal[]; task: EngineId[]; brief: EngineId[] };
 }
 
+/** Same version at the precision the request gave (up to minor): "6000" matches "6000.0.23"; "5.5" does not match "5.4". */
+const sameMinor = (req: string, pinned: string) => {
+  const n = Math.min(2, req.split('.').length);
+  return req.split('.').slice(0, n).join('.') === pinned.split('.').slice(0, n).join('.');
+};
 const label = (e: string) => ({ unreal: 'Unreal Engine', unity: 'Unity', phaser: 'Phaser', web: 'vanilla web', godot: 'Godot', other: 'another engine' })[e] ?? e;
 
 /**
@@ -245,6 +285,22 @@ export function resolveEngine(p: {
         `Conflict: profile engine ${pe} vs project files ${contradicting.join(', ')}.`,
       );
     const version = normaliseVersion(pe, p.profile.engineVersion) ?? fileVersion(pe);
+    // An explicit task-level request for a different engine (or a different version of the same engine) is a
+    // conflict the owner must resolve; it is never silently overridden by the profile.
+    for (const req of explicitEngineRequests(p.taskText)) {
+      if (req.engine !== pe)
+        return {
+          engine: null, version: null, source: 'none', confidence: 0, signals,
+          reasons: [...reasons, `Conflict: task explicitly requests ${req.engine} ("${req.phrase}") but the project profile says ${pe}.`],
+          clarification: `The task explicitly asks for ${label(req.engine)} ("${req.phrase}"), but the project profile says ${label(pe)}${version ? ` ${version}` : ''}. Should this task target ${label(pe)} (edit the task), or should the project profile change?`,
+        };
+      if (req.version && version && !sameMinor(req.version, version))
+        return {
+          engine: null, version: null, source: 'none', confidence: 0, signals,
+          reasons: [...reasons, `Conflict: task explicitly requests ${pe} ${req.version} ("${req.phrase}") but the project profile pins ${version}.`],
+          clarification: `The task asks for ${label(pe)} ${req.version} ("${req.phrase}"), but the project profile pins ${label(pe)} ${version}. Should the task follow the profile (${version}), or should the profile's engine version change?`,
+        };
+    }
     reasons.push(`Engine ${label(pe)} from the project profile${version ? ` (version ${version}${p.profile.engineVersion ? '' : ' from project files'})` : ' (no version recorded)'}.`);
     const softOthers = [...new Set([...medium.filter((e) => e !== pe), ...task.map((t) => t.engine).filter((e) => e !== pe)])];
     if (softOthers.length) reasons.push(`Ignored weaker mentions of ${softOthers.map(label).join(', ')} (profile takes priority).`);

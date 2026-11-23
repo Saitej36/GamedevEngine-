@@ -178,10 +178,17 @@ test('router: department pack assignments still apply after routing', () => {
   const d = route(k, store, 'designer', p.id, 'Design the combat rules for Unreal Blueprints implementation');
   assert.equal(d.engine.engine, 'unreal');
   assert.ok(!d.hits.some((h) => h.packId?.startsWith('tool-') || h.packId === 'engineering-craft'));
-  // The programmer is not assigned design-craft: genre knowledge is skipped and the reason recorded.
+  // The programmer is not assigned design-craft, but genre knowledge is shared read-only through genre-core:
+  // the genre section arrives, no other design-craft document does.
   const pr = route(k, store, 'programmer', p.id, 'Implement the run reset');
-  assert.ok(!pr.hits.some((h) => h.packId === 'design-craft'));
-  assert.ok(pr.reasons.some((r) => /Genre knowledge for Roguelike \/ roguelite is not in the packs assigned to the Game Programmer/.test(r)));
+  assert.ok(pr.hits.some((h) => h.slot === 'genre' && h.refId === 'design.genre-design'));
+  assert.ok(!pr.hits.some((h) => h.packId === 'design-craft' && h.refId !== 'design.genre-design'));
+  assert.equal(k.read('programmer', 'design.core-loops', p.id, []), null);
+  // Removing genre-core from the programmer removes the shared access; the skip is recorded.
+  k.setPackDepartments('genre-core', ['designer', 'qa', 'director']);
+  const pr1 = route(k, store, 'programmer', p.id, 'Implement the run reset');
+  assert.ok(!pr1.hits.some((h) => h.packId === 'design-craft'));
+  assert.ok(pr1.reasons.some((r) => /Genre knowledge for Roguelike \/ roguelite is not in the packs assigned to the Game Programmer/.test(r)));
   // Owner removes the Unreal pack from the programmer.
   k.setPackDepartments('tool-unreal', ['qa']);
   const pr2 = route(k, store, 'programmer', p.id, 'Implement Enhanced Input for the player');
@@ -220,7 +227,8 @@ test('routing history: every run stores its decision; unroutable tasks are parke
   const calls: RunOptions[] = [];
   const runner = async (o: RunOptions): Promise<RunResult> => {
     calls.push(o);
-    return { ok: true, sessionId: 's', text: 'done', costUsd: 0.01, costAvailable: true, usage: null, durationMs: null, model: null, turns: 1, files: [], error: '', aborted: false };
+    // Stand-in agent declares it relied on no reference (the citation check would otherwise send it back).
+    return { ok: true, sessionId: 's', text: 'done [K:none]', costUsd: 0.01, costAvailable: true, usage: null, durationMs: null, model: null, turns: 1, files: [], error: '', aborted: false };
   };
   const studio = new Studio(store, hub, runner, () => true, k);
   const p = studio.createProject({ name: 'H', genre: '', brief: '', repoUrl: '' });
