@@ -109,3 +109,26 @@ test('recovery re-queues interrupted tasks', () => {
   studio.recover();
   assert.equal(store.getTask(t.id).status as TaskStatus, 'queued');
 });
+
+test('retry: the next attempt is told why the last one stopped and which files it already wrote', async () => {
+  let attempt = 0;
+  const { store, studio, project, calls } = setup((o) => {
+    if (o.agentId !== 'programmer') return {};
+    attempt++;
+    return attempt === 1
+      ? { ok: false, error: 'Stopped at the $2 budget limit for one task', files: ['src/Core/Motor.cs', 'tests/MotorTests.cs'] }
+      : { files: ['README.md'] };
+  });
+  const task = studio.createTask({ projectId: project.id, title: 'Motor', description: 'Build it', assignee: 'programmer', createdBy: 'user' });
+  await waitFor(() => store.getTask(task.id).status === 'failed');
+  assert.match(store.getTask(task.id).error, /budget/);
+  studio.retryTask(task.id);
+  assert.match(store.getTask(task.id).error, /budget/, 'error kept while queued');
+  await waitFor(() => store.getTask(task.id).status === 'done');
+  const prompts = calls.filter((c) => c.agentId === 'programmer').map((c) => c.prompt);
+  assert.doesNotMatch(prompts[0], /PREVIOUS ATTEMPT/);
+  assert.match(prompts[1], /PREVIOUS ATTEMPT STOPPED: Stopped at the \$2 budget limit/);
+  assert.match(prompts[1], /- src\/Core\/Motor\.cs\n- tests\/MotorTests\.cs/);
+  assert.deepEqual(store.getTask(task.id).files.sort(), ['README.md', 'src/Core/Motor.cs', 'tests/MotorTests.cs']);
+  assert.equal(store.getTask(task.id).error, '');
+});

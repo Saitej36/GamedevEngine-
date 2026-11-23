@@ -389,7 +389,8 @@ export class Studio {
   retryTask(id: string) {
     const t = this.store.getTask(id);
     if (!['failed', 'cancelled'].includes(t.status)) throw new HttpError(409, `Task is ${t.status}; only failed or cancelled tasks can be retried`);
-    const task = this.pushTask(this.store.updateTask(id, { status: 'queued', error: '' }));
+    // Keep the error: the next run tells the agent why the last attempt stopped (it is cleared when the run starts).
+    const task = this.pushTask(this.store.updateTask(id, { status: 'queued' }));
     this.kick();
     return task;
   }
@@ -435,6 +436,7 @@ export class Studio {
     try {
       const project = this.store.getProject(task.projectId);
       const milestones = this.store.listMilestones(task.projectId);
+      const previous = task.error ? { error: task.error, files: task.files } : undefined;
       task = this.pushTask(
         this.store.updateTask(task.id, { status: 'in_progress', startedAt: task.startedAt ?? nowIso(), error: '' }),
       );
@@ -458,7 +460,11 @@ export class Studio {
         agentId,
         projectId: task.projectId,
         taskId: task.id,
-        prompt: workerTaskPrompt(task, task.dependsOn.map((id) => this.store.findTask(id)).filter((t): t is Task => !!t)),
+        prompt: workerTaskPrompt(
+          task,
+          task.dependsOn.map((id) => this.store.findTask(id)).filter((t): t is Task => !!t),
+          previous,
+        ),
         systemPrompt: workerSystemPrompt(agentId, project, milestones, AGENTS[agentId].writableDirs),
         resume,
         abort,

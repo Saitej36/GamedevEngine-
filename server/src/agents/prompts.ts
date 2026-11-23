@@ -77,13 +77,29 @@ function prerequisitesBlock(prereqs: Task[]) {
     .join('\n')}`;
 }
 
-export function workerTaskPrompt(task: Task, prereqs: Task[] = []) {
+/** Context for a retry: why the last attempt stopped and what it already wrote. */
+export interface PreviousAttempt {
+  error: string;
+  files: string[];
+}
+
+function previousAttemptBlock(prev?: PreviousAttempt) {
+  if (!prev?.error) return '';
+  return `\n\nPREVIOUS ATTEMPT STOPPED: ${prev.error}
+${
+  prev.files.length
+    ? `Files that attempt already wrote (they are in the workspace):\n${prev.files.map((f) => `- ${f}`).join('\n')}\nRead them first and finish what is missing; do not start over unless they are unusable.`
+    : 'It wrote no files.'
+} Work efficiently: keep reasoning focused and write files early.`;
+}
+
+export function workerTaskPrompt(task: Task, prereqs: Task[] = [], prev?: PreviousAttempt) {
   let p = `New task from the Director.
 
 Task ${task.id}: ${task.title}
 Priority: ${task.priority}
 
-${task.description}${prerequisitesBlock(prereqs)}`;
+${task.description}${prerequisitesBlock(prereqs)}${previousAttemptBlock(prev)}`;
   if (task.revisionCount > 0 && task.feedback) {
     p = `REVISION ${task.revisionCount} requested for task ${task.id}: ${task.title}
 
@@ -93,7 +109,7 @@ ${task.feedback}
 Original task description:
 ${task.description}${prerequisitesBlock(prereqs)}
 
-Update your existing files rather than starting over, unless the feedback asks for a redo.`;
+Update your existing files rather than starting over, unless the feedback asks for a redo.${previousAttemptBlock(prev)}`;
   }
   return p;
 }
