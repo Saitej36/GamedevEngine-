@@ -1,13 +1,13 @@
 import { createSdkMcpServer, tool } from '@anthropic-ai/claude-agent-sdk';
 import { z } from 'zod';
-import type { AgentId, AgentRunKind, Approval, ProjectStats, Task, TaskPriority, TaskReview, ToolCallRecord } from '@pixel/shared';
+import type { AgentId, AgentRunKind, Approval, ProjectProfile, ProjectStats, Task, TaskPriority, TaskReview, ToolCallRecord } from '@pixel/shared';
 import { AGENTS, AGENT_IDS, TASK_STATUSES, WORKER_IDS } from '@pixel/shared';
 import { config } from '../config.js';
 import type { Store } from '../db/store.js';
 import type { Hub } from '../events/hub.js';
 import { runAgent, type RunOptions, type RunResult } from '../agents/runner.js';
 import { isWritable } from '../agents/guard.js';
-import { detectTools, type KnowledgeService } from '../knowledge/service.js';
+import type { KnowledgeService, RoutingPlan } from '../knowledge/service.js';
 import type { KnowledgeHit, Skill } from '@pixel/shared';
 import {
   directorReviewPrompt,
@@ -35,6 +35,8 @@ export interface PreparedKnowledge {
   skillHow: string;
   hits: KnowledgeHit[];
   query: string;
+  /** Full Knowledge Router v2 decision (engine, version, disciplines, genre, reasons, clarification). */
+  plan: RoutingPlan;
 }
 
 /** A tiny FIFO mutex: the Director is one person and handles one conversation/review at a time. */
@@ -97,31 +99,69 @@ export class Studio {
     agentId: AgentId;
     projectId: string | null;
     taskText: string;
+    /** @deprecated kept for callers; the router reads profile, brief and genre from the project itself. */
     projectText?: string;
     skillId?: string | null;
     defaultSkillId?: string;
   }): PreparedKnowledge | undefined {
     const k = this.knowledge;
     if (!k) return undefined;
-    const tools = detectTools(`${p.taskText}\n${p.projectText ?? ''}`);
-    let skill: Skill | null = null;
-    let skillHow = '';
-    if (p.skillId) {
-      const s = k.skill(p.skillId);
-      if (s && s.enabled && s.role === p.agentId) (skill = s), (skillHow = 'assigned by the Director');
-      else log.warn(`skill ${p.skillId} is not available to ${p.agentId}; selecting automatically`);
+    const project = p.projectId ? this.store.getProject(p.projectId) : null;
+    const plan = k.route({
+      agentId: p.agentId,
+      projectId: p.projectId,
+      taskText: p.taskText,
+      profile: project?.profile ?? {},
+      briefText: project ? project.brief : (p.projectText ?? ''),
+      genreText: project ? `${project.genre}\n${project.brief}` : (p.projectText ?? ''),
+      skillId: p.skillId,
+      defaultSkillId: p.defaultSkillId,
+    });
+    if (p.skillId && plan.skill?.id !== p.skillId) log.warn(`skill ${p.skillId} is not available to ${p.agentId}; selected ${plan.skill?.id ?? 'none'}`);
+    return { tools: plan.tools, skill: plan.skill, skillHow: plan.skillHow, hits: plan.hits, query: plan.query, plan };
+  }
+
+  /** Owner edits the structured project profile; tasks waiting for an engine answer are re-queued. */
+  updateProfile(projectId: string, profile: ProjectProfile) {
+    const project = this.store.updateProject(projectId, { profile });
+    this.hub.broadcast({ kind: 'project_updated', project });
+    let requeued = 0;
+    for (const t of this.store.listTasks(projectId))
+      if (t.status === 'needs_clarification') {
+        this.pushTask(this.store.updateTask(t.id, { status: 'queued', error: '' }));
+        requeued++;
+      }
+    if (requeued) {
+      const m = this.store.addChat({ projectId, role: 'system', agentId: null, content: `Project profile updated; ${requeued} task(s) waiting for clarification were re-queued.` });
+      this.hub.broadcast({ kind: 'chat_message', message: m }, projectId);
+      this.kick();
     }
-    if (!skill && p.defaultSkillId) {
-      const s = k.skill(p.defaultSkillId);
-      if (s && s.enabled && s.role === p.agentId) (skill = s), (skillHow = 'default for this kind of run');
-    }
-    if (!skill) {
-      skill = k.selectSkill(p.agentId, p.taskText);
-      if (skill) skillHow = 'selected automatically from the task text';
-    }
-    const query = `${p.taskText}\n${skill ? `${skill.title} ${skill.triggers.join(' ')}` : ''}`;
-    const hits = k.retrieve({ agentId: p.agentId, query, projectId: p.projectId, tools, preferPacks: skill?.packs });
-    return { tools, skill, skillHow, hits, query: truncate(query, 300) };
+    return project;
+  }
+
+  taskRouting(taskId: string) {
+    this.store.getTask(taskId);
+    return this.knowledge ? this.knowledge.routing({ taskId }) : [];
+  }
+
+  /** The router refused to pick an engine: park the task and ask the owner instead of guessing. */
+  private requestClarification(task: Task, plan: RoutingPlan) {
+    this.knowledge?.recordRouting({ runId: null, projectId: task.projectId, taskId: task.id, agentId: task.assignee }, plan);
+    const t = this.pushTask(this.store.updateTask(task.id, { status: 'needs_clarification', error: plan.clarification ?? 'Clarification required' }));
+    const m = this.store.addChat({
+      projectId: t.projectId,
+      role: 'director',
+      agentId: 'director',
+      content: `Before ${AGENTS[t.assignee].name} can start "${t.title}" I need one answer from you:\n\n${plan.clarification}\n\nSet the engine (and version) under **Project → Edit → Project profile**; the task restarts automatically.`,
+    });
+    this.hub.broadcast({ kind: 'chat_message', message: m }, t.projectId);
+    this.hub.emit('approval_required', {
+      projectId: t.projectId,
+      agentId: t.assignee,
+      taskId: t.id,
+      message: `"${t.title}" is waiting: which engine should it target?`,
+      data: { clarification: plan.clarification },
+    });
   }
 
   /** Validate a skill requested for a task: it must exist, be enabled and belong to the assignee's role. */
@@ -157,7 +197,7 @@ export class Studio {
   // ---------------------------------------------------------------------------
   // Projects
   // ---------------------------------------------------------------------------
-  createProject(input: { name: string; genre: string; brief: string; repoUrl: string }) {
+  createProject(input: { name: string; genre: string; brief: string; repoUrl: string; profile?: ProjectProfile }) {
     const project = this.store.createProject(input);
     initWorkspace(project);
     this.store.addChat({
@@ -203,13 +243,15 @@ export class Studio {
     const run = this.store.startRun({ projectId: opts.projectId, taskId: opts.taskId, agentId: opts.agentId, kind });
     if (this.knowledge && know) {
       // Record what was injected, and mount the read-only knowledge tools bound to this run.
-      const ctx = { agentId: opts.agentId, projectId: opts.projectId, taskId: opts.taskId, runId: run.id, tools: know.tools };
+      const ctx = { agentId: opts.agentId, projectId: opts.projectId, taskId: opts.taskId, runId: run.id, tools: know.tools, engineVersion: know.plan.engine.version };
+      this.knowledge.recordRouting({ runId: run.id, projectId: opts.projectId, taskId: opts.taskId, agentId: opts.agentId }, know.plan);
       if (know.skill) this.knowledge.recordSkill(ctx, know.skill, know.skillHow);
+      for (const sk of know.plan.supporting) this.knowledge.recordSkill(ctx, sk, 'supporting skill (discipline match)');
       for (const h of know.hits) this.knowledge.record(ctx, 'auto', h, know.query);
       const k = this.knowledge.agentServer(ctx);
       opts = {
         ...opts,
-        prompt: `${opts.prompt}\n\n---\n\n${this.knowledge.renderForPrompt(know.skill, know.hits, know.tools)}`,
+        prompt: `${opts.prompt}\n\n---\n\n${this.knowledge.renderPlan(know.plan)}`,
         mcpServers: { ...(opts.mcpServers ?? {}), knowledge: k.server },
         mcpTools: [...(opts.mcpTools ?? []), ...k.toolNames],
       };
@@ -436,7 +478,17 @@ export class Studio {
     try {
       const project = this.store.getProject(task.projectId);
       const milestones = this.store.listMilestones(task.projectId);
-      const previous = task.error ? { error: task.error, files: task.files } : undefined;
+      const previous = task.error && task.status !== 'needs_clarification' ? { error: task.error, files: task.files } : undefined;
+      const know = this.prepareKnowledge({
+        agentId,
+        projectId: task.projectId,
+        taskText: `${task.title}\n${task.description}${task.feedback && task.revisionCount ? `\n${task.feedback}` : ''}`,
+        skillId: task.skillId,
+      });
+      if (know?.plan.clarification) {
+        this.requestClarification(task, know.plan);
+        return;
+      }
       task = this.pushTask(
         this.store.updateTask(task.id, { status: 'in_progress', startedAt: task.startedAt ?? nowIso(), error: '' }),
       );
@@ -449,13 +501,6 @@ export class Studio {
       });
 
       const resume = task.revisionCount > 0 ? this.store.getTaskSession(task.id) : null;
-      const know = this.prepareKnowledge({
-        agentId,
-        projectId: task.projectId,
-        taskText: `${task.title}\n${task.description}${task.feedback && task.revisionCount ? `\n${task.feedback}` : ''}`,
-        projectText: `${project.genre}\n${project.brief}`,
-        skillId: task.skillId,
-      });
       const res = await this.tracked('task', {
         agentId,
         projectId: task.projectId,
@@ -664,6 +709,8 @@ export class Studio {
           milestones: this.store.listMilestones(projectId),
           tasks,
           pending_approvals: this.store.listApprovals(projectId).filter((a) => a.status === 'pending').map((a) => ({ id: a.id, title: a.title })),
+          project_profile: this.store.getProject(projectId).profile,
+          tasks_needing_clarification: this.store.listTasks(projectId).filter((t) => t.status === 'needs_clarification').map((t) => ({ id: t.id, question: t.error })),
           workspace_files: [...snapshot(projectId).keys()].sort(),
           stats: this.stats(projectId),
         };

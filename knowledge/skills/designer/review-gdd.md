@@ -5,6 +5,11 @@ title: Review a game design document
 summary: Check docs/GDD.md and linked design specs against the brief, acceptance criteria and design craft standards, and write a severity-ranked review with an approve or revise verdict.
 triggers: review gdd, gdd review, design review, critique design, check design document, feedback on gdd
 packs: design-craft, studio-core
+version: 1.0.0
+disciplines: progression, economy, level
+genres: any
+engines: any
+engine_dependent: false
 ---
 ## Purpose
 

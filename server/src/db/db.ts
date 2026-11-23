@@ -256,6 +256,60 @@ export const MIGRATIONS: string[] = [
   CREATE INDEX IF NOT EXISTS idx_kusage_task ON knowledge_usage(task_id);
   CREATE INDEX IF NOT EXISTS idx_kusage_run ON knowledge_usage(run_id);
   `,
+  // v6 — Knowledge Router v2: project profile, routing history, imported-skill quarantine, source engine metadata.
+  `
+  ALTER TABLE projects ADD COLUMN profile TEXT NOT NULL DEFAULT '{}';
+  ALTER TABLE knowledge_sources ADD COLUMN engine TEXT NOT NULL DEFAULT '';
+  ALTER TABLE knowledge_sources ADD COLUMN engine_versions TEXT NOT NULL DEFAULT '';
+  CREATE TABLE IF NOT EXISTS routing_decisions (
+    id TEXT PRIMARY KEY,
+    run_id TEXT REFERENCES agent_runs(id) ON DELETE CASCADE,
+    project_id TEXT,
+    task_id TEXT,
+    agent_id TEXT NOT NULL,
+    engine TEXT,
+    engine_version TEXT,
+    engine_source TEXT NOT NULL,
+    engine_confidence REAL NOT NULL,
+    genre TEXT,
+    genre_source TEXT NOT NULL,
+    disciplines TEXT NOT NULL DEFAULT '[]',
+    primary_skill TEXT,
+    supporting_skills TEXT NOT NULL DEFAULT '[]',
+    refs TEXT NOT NULL DEFAULT '[]',
+    excluded TEXT NOT NULL DEFAULT '[]',
+    confidence REAL NOT NULL,
+    reasons TEXT NOT NULL DEFAULT '[]',
+    clarification_required INTEGER NOT NULL DEFAULT 0,
+    clarification_question TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_routing_task ON routing_decisions(task_id, created_at);
+  CREATE INDEX IF NOT EXISTS idx_routing_run ON routing_decisions(run_id);
+  CREATE TABLE IF NOT EXISTS skill_imports (
+    id TEXT PRIMARY KEY,
+    skill_id TEXT NOT NULL,
+    version TEXT NOT NULL,
+    role TEXT NOT NULL,
+    title TEXT NOT NULL,
+    summary TEXT NOT NULL DEFAULT '',
+    body TEXT NOT NULL,
+    source_repo TEXT NOT NULL,
+    source_commit TEXT NOT NULL DEFAULT '',
+    license TEXT NOT NULL DEFAULT '',
+    engines TEXT NOT NULL DEFAULT '[]',
+    engine_versions TEXT NOT NULL DEFAULT '{}',
+    disciplines TEXT NOT NULL DEFAULT '[]',
+    genres TEXT NOT NULL DEFAULT '[]',
+    engine_dependent INTEGER NOT NULL DEFAULT 0,
+    status TEXT NOT NULL DEFAULT 'quarantined',
+    lint_findings TEXT NOT NULL DEFAULT '[]',
+    submitted_at TEXT NOT NULL,
+    reviewed_at TEXT,
+    review_note TEXT NOT NULL DEFAULT ''
+  );
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_skill_imports_version ON skill_imports(skill_id, version, source_commit);
+  `,
 ];
 
 export type Db = DatabaseSync;

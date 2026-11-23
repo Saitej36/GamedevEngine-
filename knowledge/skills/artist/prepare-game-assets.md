@@ -5,6 +5,11 @@ title: Prepare game assets for integration
 summary: Make a batch of SVG assets integration-ready — verified dimensions, pivots, frames, naming, palette compliance — and publish an accurate asset manifest for programmers.
 triggers: prepare assets, asset export, asset manifest, sprite sheet, atlas, integration, naming, asset pass, deliver assets, ui assets, icons
 packs: art-craft, studio-core
+version: 1.0.0
+disciplines: art-pipeline, animation
+genres: any
+engines: any
+engine_dependent: false
 ---
 ## Purpose
 Turn finished or in-progress art into a clean, verified delivery that a programmer can load without opening every

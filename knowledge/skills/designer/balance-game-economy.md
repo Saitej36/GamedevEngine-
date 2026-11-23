@@ -5,6 +5,11 @@ title: Balance a game economy
 summary: Model faucets, sinks and currencies per unit of play, tune prices and rewards against target time-to-afford, and document results as estimates in design/table-economy.md.
 triggers: economy, balance economy, currency, sinks, faucets, prices, rewards, shop, inflation, monetization
 packs: design-craft, studio-core
+version: 1.0.0
+disciplines: economy, progression
+genres: any
+engines: any
+engine_dependent: false
 ---
 ## Purpose
 

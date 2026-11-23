@@ -37,14 +37,33 @@ export type TaskStatus =
   | 'awaiting_approval'
   | 'done'
   | 'failed'
-  | 'cancelled';
+  | 'cancelled'
+  /** The router could not determine the engine for an engine-dependent task; waiting for the owner. */
+  | 'needs_clarification';
 
 export type TaskPriority = 'low' | 'medium' | 'high' | 'critical';
+
+/** Engines the studio router understands. 'web' = dependency-free HTML5 canvas / ES modules. */
+export type EngineId = 'unreal' | 'unity' | 'phaser' | 'web' | 'godot' | 'other';
+
+/** Structured, owner-maintained project facts used for knowledge routing. All fields optional. */
+export interface ProjectProfile {
+  engine?: EngineId | '';
+  engineVersion?: string;
+  platform?: string;
+  primaryGenre?: string;
+  secondaryGenre?: string;
+  /** e.g. "C++ core + Blueprints for content", "TypeScript", "C# with ScriptableObjects" */
+  programmingApproach?: string;
+  /** e.g. prototype, vertical slice, full production, game jam */
+  projectType?: string;
+}
 
 export interface Project {
   id: string;
   name: string;
   genre: string;
+  profile: ProjectProfile;
   brief: string;
   repoUrl: string;
   status: 'active' | 'archived';

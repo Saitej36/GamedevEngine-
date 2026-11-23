@@ -5,6 +5,11 @@ title: Design a gameplay loop
 summary: Specify the moment-to-moment, session and meta loops with timings, resource flows, variation sources and a paper evaluation, in design/core-loop.md and the GDD.
 triggers: core loop, gameplay loop, game loop, meta loop, session loop, compulsion loop, loop design
 packs: design-craft, studio-core
+version: 1.0.0
+disciplines: feel, progression
+genres: any
+engines: any
+engine_dependent: false
 ---
 ## Purpose
 

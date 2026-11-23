@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { AgentId, KnowledgeHit, KnowledgePack, KnowledgeSource, Skill, SourceKind } from '@pixel/shared';
+import type { AgentId, ImportedSkill, KnowledgeHit, KnowledgePack, KnowledgeSource, Skill, SourceKind } from '@pixel/shared';
 import { AGENTS, AGENT_IDS } from '@pixel/shared';
-import { api } from '../api/client';
+import { api, type RoutingPreview } from '../api/client';
 import { useStudio } from '../state/store';
 import { Avatar } from './Avatar';
 import { MarkdownDoc } from './MarkdownDoc';
@@ -169,8 +169,65 @@ function Departments({ data, act, openDoc, openSkill }: { data: Data; act: Act; 
   );
 }
 
+function ReviewQueue({ act }: { act: Act }) {
+  const [items, setItems] = useState<ImportedSkill[] | null>(null);
+  const load = () => api.skillImports().then(setItems, () => setItems([]));
+  useEffect(() => {
+    void load();
+  }, []);
+  const review = (id: string, decision: 'approve' | 'reject') =>
+    act(async () => {
+      await api.reviewImport(id, decision, '');
+      await load();
+    }, decision === 'approve' ? 'Skill approved' : 'Skill rejected');
+  const pending = (items ?? []).filter((i) => i.approval === 'quarantined');
+  return (
+    <div className="card">
+      <div className="section-title">Imported skills — review queue</div>
+      <p className="muted small">
+        Skills from external repositories wait here in quarantine and are never shown to agents until you approve them. Skills with blocking findings
+        (shell or install commands, permission bypasses, unpinned source, missing license or sections) cannot be approved. No skills are imported in this phase.
+      </p>
+      {!items ? (
+        <div className="muted small">Loading…</div>
+      ) : !items.length ? (
+        <div className="muted small">The queue is empty.</div>
+      ) : (
+        items.map((i) => (
+          <div key={i.id} className="import-row">
+            <div>
+              <strong>{i.title}</strong> <code>{i.skillId}</code> v{i.version} · {AGENTS[i.role].title} · <span className="pill">{i.approval}</span>
+            </div>
+            <div className="muted small">
+              {i.sourceRepo} @ {i.sourceCommit || 'unpinned'} · {i.license || 'no license'} · engines {i.engines.join(', ') || 'any'}
+            </div>
+            {i.lintFindings.map((f, n) => (
+              <div key={n} className={`small ${f.severity === 'block' ? 'error-text' : 'muted'}`}>
+                {f.severity === 'block' ? '⛔' : '⚠'} {f.rule}: {f.detail}
+              </div>
+            ))}
+            {i.approval === 'quarantined' && (
+              <div className="actions">
+                <button className="btn danger ghost" onClick={() => review(i.id, 'reject')}>
+                  Reject
+                </button>
+                <button className="btn primary" disabled={i.lintFindings.some((f) => f.severity === 'block')} onClick={() => review(i.id, 'approve')}>
+                  Approve
+                </button>
+              </div>
+            )}
+          </div>
+        ))
+      )}
+      {pending.length > 0 && <div className="muted small">{pending.length} waiting for review.</div>}
+    </div>
+  );
+}
+
 function Skills({ data, act, openSkill }: { data: Data; act: Act; openSkill: (id: string) => void }) {
   return (
+    <>
+    <ReviewQueue act={act} />
     <div className="skill-grid">
       {AGENT_IDS.map((role) => (
         <div key={role} className="card">
@@ -196,12 +253,18 @@ function Skills({ data, act, openSkill }: { data: Data; act: Act; openSkill: (id
                   <code>{s.id}</code>
                   <div className="muted small">{s.summary}</div>
                   <div className="muted small">Uses: {s.packs.join(', ') || '—'}</div>
+                  <div className="muted small">
+                    v{s.version} · {s.origin === 'internal' ? 'studio-authored' : `imported from ${s.sourceRepo}@${s.sourceCommit.slice(0, 10)}`} · {s.license}
+                    {s.engineDependent && ' · engine-dependent'}
+                    {s.disciplines.length > 0 && ` · ${s.disciplines.join(', ')}`}
+                  </div>
                 </div>
               </div>
             ))}
         </div>
       ))}
     </div>
+    </>
   );
 }
 
@@ -474,7 +537,7 @@ function Retrieval() {
   const projectId = useStudio((s) => s.projectId);
   const [agent, setAgent] = useState<AgentId>('programmer');
   const [q, setQ] = useState('Implement a player controller MonoBehaviour in Unity C# with EditMode tests');
-  const [res, setRes] = useState<{ tools: string[]; skill: Skill | null; hits: KnowledgeHit[] } | null>(null);
+  const [res, setRes] = useState<{ tools: string[]; skill: Skill | null; hits: KnowledgeHit[]; routing: RoutingPreview | null } | null>(null);
   const run = async () => setRes(await api.knowledgeSearch(agent, q, projectId));
   const words = useMemo(() => res?.hits.reduce((n, h) => n + h.text.split(/\s+/).length, 0) ?? 0, [res]);
   return (
@@ -504,13 +567,26 @@ function Retrieval() {
       {res && (
         <div className="card">
           <div className="small">
-            Engine packs loaded: <strong>{res.tools.length ? res.tools.join(', ') : 'none'}</strong> · Skill: <strong>{res.skill ? res.skill.id : 'none (no match)'}</strong> ·{' '}
-            {res.hits.length} references, {words} words
+            Engine: <strong>{res.routing?.engine ? `${res.routing.engine}${res.routing.engineVersion ? ` ${res.routing.engineVersion}` : ' (version unknown)'}` : 'none'}</strong>
+            {res.routing && <span className="muted"> from {res.routing.engineSource}</span>} · Genre: <strong>{res.routing?.genre ?? 'none'}</strong> · Disciplines:{' '}
+            <strong>{res.routing?.disciplines.map((d) => d.id).join(', ') || 'none'}</strong> · Skill: <strong>{res.skill ? res.skill.id : 'none (no match)'}</strong>
+            {res.routing?.supportingSkills.length ? <span className="muted"> + {res.routing.supportingSkills.join(', ')}</span> : null} · {res.hits.length} references, {words} words ·
+            confidence {res.routing ? Math.round(res.routing.confidence * 100) : 0}%
           </div>
+          {res.routing?.clarification && <div className="notice warn small">Clarification required: {res.routing.clarification}</div>}
+          {res.routing && (
+            <ul className="routing-reasons small">
+              {res.routing.reasons.map((r, i) => (
+                <li key={i}>{r}</li>
+              ))}
+            </ul>
+          )}
           {res.hits.map((h, i) => (
             <div key={i} className="hit">
               <div className="hit-head">
                 <code>{h.refId}</code> <span className="muted">§ {h.section}</span>
+                {h.slot && <span className="pill">{h.slot}</span>}
+                {h.versionStatus === 'unverified' && <span className="pill st-awaiting_approval">version unverified</span>}
                 <span className="grow" />
                 <span className="pill">{TRUST_LABEL[h.trust]}</span>
                 <span className="muted small">score {h.score}</span>

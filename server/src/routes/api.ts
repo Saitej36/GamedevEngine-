@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import express, { type NextFunction, type Request, type Response } from 'express';
-import type { AgentId, TaskPriority } from '@pixel/shared';
+import type { AgentId, ProjectProfile, TaskPriority } from '@pixel/shared';
 import { AGENTS, isAgentId } from '@pixel/shared';
 import { config } from '../config.js';
 import type { Store } from '../db/store.js';
@@ -11,6 +11,32 @@ import { fileTree, mimeFor, resolveInside, workspaceRoot, writeBrief } from '../
 import { HttpError } from '../util.js';
 
 type Body = Record<string, unknown>;
+
+const ENGINE_IDS = ['', 'unreal', 'unity', 'phaser', 'web', 'godot', 'other'] as const;
+/** Validate an owner-supplied project profile (all fields optional strings, engine from a fixed list). */
+function parseProfile(v: unknown): ProjectProfile {
+  if (v === undefined || v === null) return {};
+  if (typeof v !== 'object' || Array.isArray(v)) throw new HttpError(400, 'profile must be an object');
+  const o = v as Record<string, unknown>;
+  const out: ProjectProfile = {};
+  const text = (k: keyof ProjectProfile, max = 120) => {
+    const x = o[k];
+    if (x === undefined || x === null || x === '') return;
+    if (typeof x !== 'string' || x.length > max) throw new HttpError(400, `profile.${k} must be a string of at most ${max} characters`);
+    (out as Record<string, string>)[k] = x.trim();
+  };
+  if (o.engine !== undefined && o.engine !== null) {
+    if (!ENGINE_IDS.includes(o.engine as (typeof ENGINE_IDS)[number])) throw new HttpError(400, `profile.engine must be one of ${ENGINE_IDS.filter(Boolean).join(', ')}`);
+    if (o.engine) out.engine = o.engine as ProjectProfile['engine'];
+  }
+  text('engineVersion', 40);
+  text('platform');
+  text('primaryGenre');
+  text('secondaryGenre');
+  text('programmingApproach', 200);
+  text('projectType');
+  return out;
+}
 const PRIORITIES: TaskPriority[] = ['low', 'medium', 'high', 'critical'];
 
 function str(b: Body, key: string, opts: { required?: boolean; max?: number } = {}): string {
@@ -88,6 +114,7 @@ export function apiRouter(store: Store, studio: Studio, hub: Hub) {
         genre: str(b, 'genre', { max: 80 }),
         brief: str(b, 'brief', { max: 20000 }),
         repoUrl: str(b, 'repoUrl', { max: 400 }),
+        profile: parseProfile(b.profile),
       });
     }),
   );
@@ -112,6 +139,7 @@ export function apiRouter(store: Store, studio: Studio, hub: Hub) {
       for (const k of ['name', 'genre', 'brief', 'repoUrl', 'status'] as const)
         if (k in b) patch[k] = str(b, k, { max: k === 'brief' ? 20000 : 400 });
       if (patch.status && !['active', 'archived'].includes(patch.status)) throw new HttpError(400, 'Invalid status');
+      if ('profile' in b) studio.updateProfile(String(req.params.id), parseProfile(b.profile));
       const p = store.updateProject(String(req.params.id), patch);
       if ('brief' in patch || 'name' in patch || 'genre' in patch || 'repoUrl' in patch) writeBrief(p);
       hub.broadcast({ kind: 'project_updated', project: p });
@@ -231,6 +259,7 @@ export function apiRouter(store: Store, studio: Studio, hub: Hub) {
   );
   r.get('/tasks/:id/history', wrap((req) => studio.taskHistory(String(req.params.id))));
   r.get('/tasks/:id/knowledge', wrap((req) => studio.taskKnowledge(String(req.params.id))));
+  r.get('/tasks/:id/routing', wrap((req) => studio.taskRouting(String(req.params.id))));
 
   // -- knowledge library ----------------------------------------------------
   const kn = () => {
@@ -283,9 +312,32 @@ export function apiRouter(store: Store, studio: Studio, hub: Hub) {
         taskText: q,
         projectText: project ? `${project.genre}\n${project.brief}` : '',
       });
-      return prepared ? { tools: prepared.tools, skill: prepared.skill, hits: prepared.hits } : { tools: [], skill: null, hits: [] };
+      if (!prepared) return { tools: [], skill: null, hits: [], routing: null };
+      const pl = prepared.plan;
+      return {
+        tools: prepared.tools,
+        skill: prepared.skill,
+        hits: prepared.hits,
+        routing: {
+          engine: pl.engine.engine,
+          engineVersion: pl.engine.version,
+          engineSource: pl.engine.source,
+          engineConfidence: pl.engine.confidence,
+          genre: pl.genre.genre,
+          disciplines: pl.disciplines,
+          supportingSkills: pl.supporting.map((x) => x.id),
+          excluded: pl.excluded,
+          confidence: pl.confidence,
+          reasons: pl.reasons,
+          clarification: pl.clarification,
+        },
+      };
     }),
   );
+  // Imported-skill review queue. There is deliberately no endpoint that imports or fetches skills in this phase.
+  r.get('/knowledge/skill-imports', wrap(() => kn().imports()));
+  r.post('/knowledge/skill-imports/:id/approve', wrap((req) => kn().approveImport(String(req.params.id), str(req.body as Body, 'note', { max: 2000 }))));
+  r.post('/knowledge/skill-imports/:id/reject', wrap((req) => kn().rejectImport(String(req.params.id), str(req.body as Body, 'note', { max: 2000 }))));
   r.get('/knowledge/sources', wrap(() => kn().sources()));
   r.post(
     '/knowledge/sources',
@@ -316,6 +368,8 @@ export function apiRouter(store: Store, studio: Studio, hub: Hub) {
           includePaths: Array.isArray(b.includePaths) ? b.includePaths.map(String).map((s) => s.trim()).filter(Boolean).slice(0, 200) : [],
           projectId,
           notes: str(b, 'notes', { max: 1000 }),
+          engine: str(b, 'engine', { max: 20 }),
+          engineVersions: str(b, 'engineVersions', { max: 60 }),
         },
         { files, pdf, ref: str(b, 'ref', { max: 120 }) || undefined },
       );

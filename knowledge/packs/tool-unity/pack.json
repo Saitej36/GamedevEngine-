@@ -1,1 +1,19 @@
-{ "id": "tool-unity", "title": "Unity & C# (internal summary)", "layer": "tool", "description": "Internal summary of Unity 6 / 2022 LTS engineering practice in C#: project structure, MonoBehaviour lifecycle, ScriptableObjects, physics, input, UI, testing with the Unity Test Framework, profiling and builds.", "defaultDepartments": ["programmer", "qa"], "tools": ["unity"], "version": "1.0", "license": "Pixel Studio internal", "trust": "internal" }
+{
+  "id": "tool-unity",
+  "title": "Unity & C# (internal summary)",
+  "layer": "tool",
+  "description": "Internal summary of Unity 6 / 2022 LTS engineering practice in C#: project structure, MonoBehaviour lifecycle, ScriptableObjects, physics, input, UI, testing with the Unity Test Framework, profiling and builds.",
+  "defaultDepartments": [
+    "programmer",
+    "qa"
+  ],
+  "tools": [
+    "unity"
+  ],
+  "version": "1.0",
+  "license": "Pixel Studio internal",
+  "trust": "internal",
+  "engineVersions": {
+    "unity": ">=2022.3 <7000"
+  }
+}

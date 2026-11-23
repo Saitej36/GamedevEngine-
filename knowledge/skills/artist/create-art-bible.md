@@ -5,6 +5,11 @@ title: Create an art bible and locked palette
 summary: Establish the project's visual rules — pillars, palette file, scale, outline and lighting rules, naming — plus exemplar SVG swatches, as the source of truth for all later art.
 triggers: art bible, style guide, art direction, palette, visual style, look and feel, visual development, style frame
 packs: art-craft, studio-core
+version: 1.0.0
+disciplines: art-pipeline, ui
+genres: any
+engines: any
+engine_dependent: false
 ---
 ## Purpose
 Create the single source of truth for the game's visual style so every later asset can be checked against written,

@@ -5,6 +5,11 @@ title: Generate a QA report
 summary: Summarise QA status for a build, sprint or milestone with honest test execution counts, coverage against acceptance criteria, open bugs by severity, risks and a clear release recommendation.
 triggers: qa report, test report, test summary, quality status, release readiness, sign-off, test results
 packs: qa-craft, studio-core
+version: 1.0.0
+disciplines: publishing
+genres: any
+engines: any
+engine_dependent: false
 ---
 ## Purpose
 Give the Director and Producer an accurate picture of quality: what was tested, what was not, what is broken, and whether

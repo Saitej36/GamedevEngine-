@@ -91,6 +91,28 @@ recorded per run (`GET /api/tasks/:id/knowledge`) and shown under **Knowledge us
 text can never become a skill or change permissions; forged envelope tags are neutralised. Format rules:
 `knowledge/FORMAT.md`.
 
+**Knowledge Router v2.** Each project has a structured profile (engine, engine version, platform, primary and
+secondary genre, programming approach, project type; *Project → Edit*). Every run is routed:
+
+1. **Engine — exactly one.** Priority: project profile → project files (`*.uproject`, `ProjectSettings/ProjectVersion.txt`,
+   `package.json` with `phaser`, `.asmdef`, `*.Build.cs`, …) → engine named in the task (then the brief). Conflicting
+   signals or no signal on engine-dependent work (Programmer, engine-dependent skills) **park the task as
+   `needs_clarification`** and the Director asks the owner; it restarts when the profile is updated. Several engines
+   are never loaded.
+2. **Version.** Engine packs and engine-tagged sources declare version ranges (studio baselines: UE `>=5.4 <5.5`,
+   Unity `>=2022.3 <7000` i.e. 2022.3 LTS–Unity 6, Phaser `>=3.90 <4`). Incompatible knowledge is excluded and
+   recorded; knowledge whose version cannot be checked is flagged `engine_version_status="unverified"`.
+3. **Disciplines** (several) and **one primary genre** from `knowledge/routing.json` keyword tables.
+4. **Budget:** one primary skill, up to two supporting skills (same role, shared discipline; purpose + checklist only),
+   and at most 6 sections / ~1,800 words: engine ≤2 · genre ≤1 · discipline ≤2 · project architecture ≤1 · general.
+5. Every decision (engine + source + confidence, version, genre, disciplines, skills, references, exclusions,
+   reasons, clarification) is stored in `routing_decisions` and shown under **Routing** on the task card.
+
+Skills carry metadata (version, source repo/commit, license, engines + versions, disciplines, genres, department,
+approval). Imported skills go to a **quarantine** (`skill_imports`), are linted (shell/install/network commands,
+permission bypass, instruction overrides, unpinned source, missing license or sections) and are invisible to agents
+until the owner approves them in *Knowledge → Skills → Review queue*. Nothing is imported or fetched automatically.
+
 Fetching GitHub folders needs the GitHub API (set `GITHUB_TOKEN` for higher limits); without it only explicitly
 listed files are fetched over raw URLs. Behind an HTTP proxy, start the server with `NODE_USE_ENV_PROXY=1`.
 

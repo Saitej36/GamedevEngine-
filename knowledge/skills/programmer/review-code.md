@@ -5,6 +5,11 @@ title: Review game code
 summary: Review game source and tests for correctness, architecture, testability, performance and honest reporting, producing prioritized findings with file references.
 triggers: code review, review code, review pr, review changes, audit code, check implementation, refactor review, quality review
 packs: engineering-craft, qa-craft, studio-core
+version: 1.0.0
+disciplines: performance, save, ai
+genres: any
+engines: any
+engine_dependent: true
 ---
 ## Purpose
 Give a structured, actionable review of game code written by another agent or person, catching bugs and design-boundary

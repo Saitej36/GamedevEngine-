@@ -1,0 +1,92 @@
+{
+  "$comment": "Routing tables for the knowledge router (Knowledge Router v2). Content, not code: keywords classify a task into disciplines/genres; hints name the studio documents (and optionally a section) that best cover each one. Every hinted id is validated by the test suite.",
+  "engines": {
+    "unreal": { "label": "Unreal Engine", "baseline": "5.4", "pack": "tool-unreal" },
+    "unity": { "label": "Unity", "baseline": "6000.0 (Unity 6) / 2022.3 LTS", "pack": "tool-unity" },
+    "phaser": { "label": "Phaser", "baseline": "3.90", "pack": "tool-phaser" },
+    "web": { "label": "Vanilla web (canvas + ES modules)", "baseline": "", "pack": "tool-web" },
+    "godot": { "label": "Godot", "baseline": "", "pack": null },
+    "other": { "label": "Other / custom engine", "baseline": "", "pack": null }
+  },
+  "disciplines": {
+    "combat": {
+      "label": "Combat",
+      "keywords": ["combat", "attack", "melee", "weapon", "damage", "hitbox", "hurtbox", "health", "hit points", "enemy fight", "boss fight", "parry", "dodge", "projectile", "time to kill", "ttk", "dps"],
+      "hints": ["design.mechanics-and-systems#Worked example: time-to-kill driven combat", "eng.game-programming-patterns", "design.progression-and-balancing"]
+    },
+    "ai": {
+      "label": "Game AI",
+      "keywords": ["enemy ai", "game ai", "npc behaviour", "npc behavior", "behaviour tree", "behavior tree", "state machine", "utility ai", "goap", "pathfinding", "navmesh", "perception", "patrol", "chase", "aggro"],
+      "hints": ["eng.game-programming-patterns#State machines", "design.mechanics-and-systems#States and state machines", "unreal.gameplay-framework", "unity.gameplay-systems"]
+    },
+    "animation": {
+      "label": "Animation",
+      "keywords": ["animation", "animate", "animator", "anim montage", "montage", "sprite sheet", "spritesheet", "frames", "keyframe", "blend tree", "anim notify", "tween"],
+      "hints": ["art.character-design#Planning sprite sheets and animation frames", "phaser.physics-input-assets#Spritesheet animations", "art.asset-specifications"]
+    },
+    "input": {
+      "label": "Input",
+      "keywords": ["input", "controls", "controller", "gamepad", "keyboard", "touch", "input buffer", "buffering", "rebinding", "input system", "enhanced input", "input actions", "bindings"],
+      "hints": ["unity.gameplay-systems#Unity Input System package", "unreal.gameplay-framework#Enhanced Input", "phaser.physics-input-assets", "web.canvas-game-architecture#Input handling"]
+    },
+    "save": {
+      "label": "Save systems",
+      "keywords": ["save", "saving", "save system", "load game", "persistence", "persist", "serialization", "serialise", "serialize", "save file", "checkpoint", "profile data", "cloud save"],
+      "hints": ["eng.software-architecture", "eng.testing-and-deployment"]
+    },
+    "ui": {
+      "label": "UI/UX",
+      "keywords": ["ui", "ux", "hud", "menu", "user interface", "screen flow", "accessibility", "settings screen", "inventory screen", "tooltip", "health bar", "ui toolkit", "umg", "ugui"],
+      "hints": ["unity.gameplay-systems#UI Toolkit and uGUI", "art.asset-specifications", "design.player-experience-and-retention"]
+    },
+    "procgen": {
+      "label": "Procedural generation",
+      "keywords": ["procedural", "procgen", "generator", "generate levels", "seed", "seeded", "random dungeon", "wave function collapse", "noise", "rooms layout"],
+      "hints": ["eng.debugging#Determinism and seeds", "design.level-design", "design.genre-design#Roguelite design levers"]
+    },
+    "progression": {
+      "label": "Progression",
+      "keywords": ["progression", "level progression", "leveling", "levelling", "xp", "experience curve", "unlock", "unlocks", "upgrade path", "skill tree", "difficulty curve", "meta progression", "level select", "stars"],
+      "hints": ["design.progression-and-balancing", "design.core-loops", "design.player-experience-and-retention"]
+    },
+    "economy": {
+      "label": "Economy",
+      "keywords": ["economy", "currency", "coins", "gold", "shop", "store", "price", "prices", "sinks", "faucets", "rewards", "monetization", "monetisation", "iap", "loot"],
+      "hints": ["design.economy-and-monetization", "design.progression-and-balancing"]
+    },
+    "level": {
+      "label": "Level design",
+      "keywords": ["level design", "level layout", "level", "levels", "map", "room", "stage", "encounter", "blockout", "critical path", "tileset", "world layout"],
+      "hints": ["design.level-design", "art.environment-design"]
+    },
+    "feel": {
+      "label": "Game feel",
+      "keywords": ["game feel", "juice", "juicy", "hit-stop", "hitstop", "hit stop", "screen shake", "camera shake", "squash", "stretch", "feedback", "responsiveness", "coyote time", "impact"],
+      "hints": ["design.player-experience-and-retention", "qa.gameplay-testing#Testing game feel", "design.core-loops"]
+    },
+    "performance": {
+      "label": "Performance",
+      "keywords": ["performance", "optimize", "optimise", "optimization", "fps", "frame rate", "frame time", "profiling", "profiler", "memory", "garbage", "gc", "draw calls", "lag", "stutter", "battery", "mobile performance"],
+      "hints": ["eng.optimization", "qa.performance-testing", "unity.testing-profiling-builds", "unreal.testing-profiling-packaging", "phaser.typescript-testing-performance"]
+    },
+    "art-pipeline": {
+      "label": "Art pipeline",
+      "keywords": ["art pipeline", "asset pipeline", "export", "import settings", "atlas", "texture", "sprite import", "asset manifest", "naming convention", "pivot", "lod", "uv", "palette"],
+      "hints": ["art.production-pipelines-2d-3d", "art.asset-specifications", "art.visual-consistency"]
+    },
+    "publishing": {
+      "label": "Publishing",
+      "keywords": ["publish", "publishing", "release", "ship", "store page", "steam", "itch", "app store", "google play", "build pipeline", "packaging", "package the game", "release candidate", "certification", "launch"],
+      "hints": ["eng.testing-and-deployment#Build and release checklist", "production.milestone-management#Release candidate and gold", "unreal.testing-profiling-packaging#Packaging", "unity.testing-profiling-builds#Unity release checklist"]
+    }
+  },
+  "genres": {
+    "roguelike": { "label": "Roguelike / roguelite", "aliases": ["roguelike", "roguelite", "rogue-lite", "rogue-like", "run-based"], "hints": ["design.genre-design#Roguelite design levers"] },
+    "platformer": { "label": "Platformer", "aliases": ["platformer", "platform game", "metroidvania", "precision platformer"], "hints": ["design.genre-design#Platformer design levers"] },
+    "puzzle": { "label": "Puzzle", "aliases": ["puzzle", "match-3", "match 3", "logic puzzle", "sokoban"], "hints": ["design.genre-design#Puzzle design levers"] },
+    "rpg": { "label": "RPG", "aliases": ["rpg", "role-playing", "role playing", "jrpg", "action rpg", "arpg"], "hints": ["design.genre-design#RPG design levers"] },
+    "shooter": { "label": "Shooter", "aliases": ["shooter", "fps", "twin-stick", "twin stick", "shoot 'em up", "shmup", "arena shooter"], "hints": ["design.genre-design#Shooter design levers"] },
+    "strategy": { "label": "Strategy", "aliases": ["strategy", "rts", "tower defense", "tower defence", "4x", "tactics"], "hints": ["design.genre-design#Strategy design levers"] },
+    "idle-casual": { "label": "Idle / mobile casual", "aliases": ["idle", "incremental", "clicker", "hyper-casual", "hypercasual", "casual mobile", "mobile casual"], "hints": ["design.genre-design#Idle and mobile casual design levers"] }
+  }
+}

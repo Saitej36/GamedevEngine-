@@ -5,6 +5,11 @@ title: Design a progression system
 summary: Specify how player power, options and goals grow over time using explicit curves, unlock schedules and difficulty pacing, written to design/spec-progression.md with a tuning table.
 triggers: progression, leveling, xp curve, unlocks, skill tree, upgrades, difficulty curve, meta progression
 packs: design-craft, studio-core
+version: 1.0.0
+disciplines: progression
+genres: any
+engines: any
+engine_dependent: false
 ---
 ## Purpose
 

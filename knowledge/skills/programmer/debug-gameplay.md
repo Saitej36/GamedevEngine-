@@ -5,6 +5,11 @@ title: Debug a gameplay bug
 summary: Find the root cause of a reported gameplay bug by reading code against a reproduction, fix it minimally, and add a regression test the human can run.
 triggers: bug, debug, fix, broken, crash, glitch, not working, regression, stuck, falls through, wrong score, frame rate, jitter, flaky
 packs: engineering-craft, qa-craft, studio-core
+version: 1.0.0
+disciplines: combat, ai, input, save, performance
+genres: any
+engines: any
+engine_dependent: true
 ---
 ## Purpose
 Resolve a reported gameplay defect with a root-cause fix rather than a symptom patch. Because the agent cannot run the

@@ -1,4 +1,4 @@
-import type { AgentId, KnowledgeSource, KnowledgeUsage, SourceKind } from '@pixel/shared';
+import type { AgentId, ImportedSkill, KnowledgeSource, KnowledgeUsage, RoutingDecision, SourceKind } from '@pixel/shared';
 import { isAgentId } from '@pixel/shared';
 import type { Db } from '../db/db.js';
 import { HttpError, newId, nowIso } from '../util.js';
@@ -79,6 +79,8 @@ export class KnowledgeStore {
       error: s(r.error),
       notes: s(r.notes),
       retrievedAt: sn(r.retrieved_at),
+      engine: s(r.engine),
+      engineVersions: s(r.engine_versions),
       createdAt: s(r.created_at),
       documents: (
         this.db.prepare(`SELECT id, path, title, bytes FROM knowledge_documents WHERE source_id = ? ORDER BY path`).all(id) as Row[]
@@ -93,14 +95,17 @@ export class KnowledgeStore {
     if (!r) throw new HttpError(404, `Knowledge source ${id} not found`);
     return this.toSource(r);
   }
-  createSource(src: Pick<KnowledgeSource, 'kind' | 'name' | 'url' | 'version' | 'license' | 'trust' | 'departments' | 'includePaths' | 'projectId' | 'notes'>) {
+  createSource(
+    src: Pick<KnowledgeSource, 'kind' | 'name' | 'url' | 'version' | 'license' | 'trust' | 'departments' | 'includePaths' | 'projectId' | 'notes'> &
+      Partial<Pick<KnowledgeSource, 'engine' | 'engineVersions'>>,
+  ) {
     const id = newId('src');
     this.db
       .prepare(
-        `INSERT INTO knowledge_sources (id, kind, name, url, version, license, trust, departments, include_paths, project_id, notes, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO knowledge_sources (id, kind, name, url, version, license, trust, departments, include_paths, project_id, notes, engine, engine_versions, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
-      .run(id, src.kind, src.name, src.url, src.version, src.license, src.trust, JSON.stringify(src.departments), JSON.stringify(src.includePaths), src.projectId, src.notes, nowIso());
+      .run(id, src.kind, src.name, src.url, src.version, src.license, src.trust, JSON.stringify(src.departments), JSON.stringify(src.includePaths), src.projectId, src.notes, src.engine ?? '', src.engineVersions ?? '', nowIso());
     return this.getSource(id);
   }
   updateSource(id: string, patch: Partial<Pick<KnowledgeSource, 'name' | 'version' | 'license' | 'trust' | 'departments' | 'enabled' | 'notes' | 'status' | 'error' | 'retrievedAt'>>) {
@@ -138,6 +143,132 @@ export class KnowledgeStore {
       content: s(r.content),
       bytes: Number(r.bytes),
     }));
+  }
+
+  // -- routing history
+  addRouting(d: Omit<RoutingDecision, 'id' | 'createdAt'>): RoutingDecision {
+    const id = newId('route');
+    this.db
+      .prepare(
+        `INSERT INTO routing_decisions (id, run_id, project_id, task_id, agent_id, engine, engine_version, engine_source, engine_confidence,
+           genre, genre_source, disciplines, primary_skill, supporting_skills, refs, excluded, confidence, reasons,
+           clarification_required, clarification_question, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        id, d.runId, d.projectId, d.taskId, d.agentId, d.engine, d.engineVersion, d.engineSource, d.engineConfidence,
+        d.genre, d.genreSource, JSON.stringify(d.disciplines), d.primarySkill, JSON.stringify(d.supportingSkills),
+        JSON.stringify(d.references), JSON.stringify(d.excluded), d.confidence, JSON.stringify(d.reasons),
+        d.clarificationRequired ? 1 : 0, d.clarificationQuestion, nowIso(),
+      );
+    return this.listRouting({ id })[0];
+  }
+  listRouting(f: { id?: string; taskId?: string; runId?: string; projectId?: string }): RoutingDecision[] {
+    const where: string[] = [];
+    const args: string[] = [];
+    if (f.id) (where.push('id = ?'), args.push(f.id));
+    if (f.taskId) (where.push('task_id = ?'), args.push(f.taskId));
+    if (f.runId) (where.push('run_id = ?'), args.push(f.runId));
+    if (f.projectId) (where.push('project_id = ?'), args.push(f.projectId));
+    const j = (v: unknown, d: unknown) => {
+      try {
+        return JSON.parse(s(v)) ?? d;
+      } catch {
+        return d;
+      }
+    };
+    return (
+      this.db
+        .prepare(`SELECT * FROM routing_decisions ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY created_at, rowid`)
+        .all(...args) as Row[]
+    ).map((r) => ({
+      id: s(r.id),
+      runId: sn(r.run_id),
+      projectId: sn(r.project_id),
+      taskId: sn(r.task_id),
+      agentId: s(r.agent_id) as AgentId,
+      engine: sn(r.engine),
+      engineVersion: sn(r.engine_version),
+      engineSource: s(r.engine_source) as RoutingDecision['engineSource'],
+      engineConfidence: Number(r.engine_confidence),
+      genre: sn(r.genre),
+      genreSource: s(r.genre_source) as RoutingDecision['genreSource'],
+      disciplines: j(r.disciplines, []),
+      primarySkill: sn(r.primary_skill),
+      supportingSkills: j(r.supporting_skills, []),
+      references: j(r.refs, []),
+      excluded: j(r.excluded, []),
+      confidence: Number(r.confidence),
+      reasons: j(r.reasons, []),
+      clarificationRequired: Number(r.clarification_required) === 1,
+      clarificationQuestion: s(r.clarification_question),
+      createdAt: s(r.created_at),
+    }));
+  }
+
+  // -- imported skills (quarantine → owner review)
+  private toImport(r: Row): ImportedSkill {
+    const j = (v: unknown, d: unknown) => {
+      try {
+        return JSON.parse(s(v)) ?? d;
+      } catch {
+        return d;
+      }
+    };
+    return {
+      id: s(r.id),
+      skillId: s(r.skill_id),
+      role: s(r.role) as AgentId,
+      title: s(r.title),
+      summary: s(r.summary),
+      body: s(r.body),
+      version: s(r.version),
+      sourceRepo: s(r.source_repo),
+      sourceCommit: s(r.source_commit),
+      license: s(r.license),
+      engines: j(r.engines, []),
+      engineVersions: j(r.engine_versions, {}),
+      disciplines: j(r.disciplines, []),
+      genres: j(r.genres, []),
+      engineDependent: Number(r.engine_dependent) === 1,
+      approval: s(r.status) as ImportedSkill['approval'],
+      origin: 'imported',
+      lintFindings: j(r.lint_findings, []),
+      submittedAt: s(r.submitted_at),
+      reviewedAt: sn(r.reviewed_at),
+      reviewNote: s(r.review_note),
+    };
+  }
+  addImport(i: Omit<ImportedSkill, 'id' | 'approval' | 'origin' | 'submittedAt' | 'reviewedAt' | 'reviewNote'>): ImportedSkill {
+    const id = newId('simp');
+    this.db
+      .prepare(
+        `INSERT INTO skill_imports (id, skill_id, version, role, title, summary, body, source_repo, source_commit, license, engines,
+           engine_versions, disciplines, genres, engine_dependent, status, lint_findings, submitted_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'quarantined', ?, ?)`,
+      )
+      .run(
+        id, i.skillId, i.version, i.role, i.title, i.summary, i.body, i.sourceRepo, i.sourceCommit, i.license,
+        JSON.stringify(i.engines), JSON.stringify(i.engineVersions), JSON.stringify(i.disciplines), JSON.stringify(i.genres),
+        i.engineDependent ? 1 : 0, JSON.stringify(i.lintFindings), nowIso(),
+      );
+    return this.getImport(id);
+  }
+  getImport(id: string): ImportedSkill {
+    const r = this.db.prepare(`SELECT * FROM skill_imports WHERE id = ?`).get(id) as Row | undefined;
+    if (!r) throw new HttpError(404, `Imported skill ${id} not found`);
+    return this.toImport(r);
+  }
+  listImports(status?: ImportedSkill['approval']): ImportedSkill[] {
+    return (
+      (status
+        ? this.db.prepare(`SELECT * FROM skill_imports WHERE status = ? ORDER BY submitted_at`).all(status)
+        : this.db.prepare(`SELECT * FROM skill_imports ORDER BY submitted_at`).all()) as Row[]
+    ).map((r) => this.toImport(r));
+  }
+  setImportStatus(id: string, status: ImportedSkill['approval'], note: string) {
+    this.db.prepare(`UPDATE skill_imports SET status = ?, review_note = ?, reviewed_at = ? WHERE id = ?`).run(status, note, nowIso(), id);
+    return this.getImport(id);
   }
 
   // -- usage

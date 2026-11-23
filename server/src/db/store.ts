@@ -12,6 +12,7 @@ import type {
   ChatMessage,
   Milestone,
   Project,
+  ProjectProfile,
   Task,
   TaskPriority,
   TaskStatus,
@@ -28,12 +29,22 @@ const toProject = (r: Row): Project => ({
   id: s(r.id),
   name: s(r.name),
   genre: s(r.genre),
+  profile: parseProfile(r.profile),
   brief: s(r.brief),
   repoUrl: s(r.repo_url),
   status: s(r.status) as Project['status'],
   createdAt: s(r.created_at),
   updatedAt: s(r.updated_at),
 });
+
+function parseProfile(v: unknown): ProjectProfile {
+  try {
+    const o = JSON.parse(s(v) || '{}');
+    return o && typeof o === 'object' && !Array.isArray(o) ? (o as ProjectProfile) : {};
+  } catch {
+    return {};
+  }
+}
 
 const toMilestone = (r: Row): Milestone => ({
   id: s(r.id),
@@ -221,22 +232,22 @@ export class Store {
     if (!r) throw new HttpError(404, `Project ${id} not found`);
     return toProject(r);
   }
-  createProject(p: { name: string; genre: string; brief: string; repoUrl: string }): Project {
+  createProject(p: { name: string; genre: string; brief: string; repoUrl: string; profile?: ProjectProfile }): Project {
     const id = newId('prj');
     const t = nowIso();
     this.db
       .prepare(
-        `INSERT INTO projects (id, name, genre, brief, repo_url, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO projects (id, name, genre, brief, repo_url, profile, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       )
-      .run(id, p.name, p.genre, p.brief, p.repoUrl, t, t);
+      .run(id, p.name, p.genre, p.brief, p.repoUrl, JSON.stringify(p.profile ?? {}), t, t);
     return this.getProject(id);
   }
-  updateProject(id: string, patch: Partial<Pick<Project, 'name' | 'genre' | 'brief' | 'repoUrl' | 'status'>>): Project {
+  updateProject(id: string, patch: Partial<Pick<Project, 'name' | 'genre' | 'brief' | 'repoUrl' | 'status' | 'profile'>>): Project {
     const cur = this.getProject(id);
     const n = { ...cur, ...patch };
     this.db
-      .prepare(`UPDATE projects SET name=?, genre=?, brief=?, repo_url=?, status=?, updated_at=? WHERE id=?`)
-      .run(n.name, n.genre, n.brief, n.repoUrl, n.status, nowIso(), id);
+      .prepare(`UPDATE projects SET name=?, genre=?, brief=?, repo_url=?, status=?, profile=?, updated_at=? WHERE id=?`)
+      .run(n.name, n.genre, n.brief, n.repoUrl, n.status, JSON.stringify(n.profile ?? {}), nowIso(), id);
     return this.getProject(id);
   }
   deleteProject(id: string) {

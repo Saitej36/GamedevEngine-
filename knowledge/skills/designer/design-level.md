@@ -5,6 +5,11 @@ title: Design a level
 summary: Write a buildable level spec in design/level-<nn>-<name>.md with goal, teaching structure, beat chart, grid or coordinate layout, entity table and checkpoints, consistent with GDD movement numbers.
 triggers: level design, level, stage, map, layout, encounter, room, world, mission
 packs: design-craft, studio-core
+version: 1.0.0
+disciplines: level, procgen
+genres: any
+engines: any
+engine_dependent: false
 ---
 ## Purpose
 

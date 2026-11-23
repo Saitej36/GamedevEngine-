@@ -5,6 +5,11 @@ title: Reproduce and report a bug
 summary: Turn a reported or suspected defect into a complete bug report with severity, priority suggestion, minimal reproduction steps, expected vs actual, environment, frequency, evidence and file:line, stating honestly whether it was reproduced.
 triggers: bug, reproduce, repro steps, bug report, defect, crash, issue report, triage
 packs: qa-craft, studio-core
+version: 1.0.0
+disciplines: 
+genres: any
+engines: any
+engine_dependent: false
 ---
 ## Purpose
 Produce a bug report that a programmer can act on without asking questions, and that is truthful about how the bug was

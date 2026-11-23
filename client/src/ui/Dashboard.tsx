@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import type { AgentRun, Milestone, UsageSummary } from '@pixel/shared';
+import type { AgentRun, Milestone, ProjectProfile, UsageSummary } from '@pixel/shared';
+import { ProfileFields, profileSummary } from './ProfileFields';
 import { api } from '../api/client';
 import { RunTable } from './History';
 import { AGENTS, WORKER_IDS } from '@pixel/shared';
@@ -15,12 +16,12 @@ export function Dashboard() {
   const approvals = useStudio((s) => s.approvals);
   const mode = useStudio((s) => s.mode);
   const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState({ name: '', genre: '', brief: '', repoUrl: '' });
+  const [draft, setDraft] = useState<{ name: string; genre: string; brief: string; repoUrl: string; profile: ProjectProfile }>({ name: '', genre: '', brief: '', repoUrl: '', profile: {} });
   const [msTitle, setMsTitle] = useState('');
   const [msDue, setMsDue] = useState('');
 
   useEffect(() => {
-    if (project) setDraft({ name: project.name, genre: project.genre, brief: project.brief, repoUrl: project.repoUrl });
+    if (project) setDraft({ name: project.name, genre: project.genre, brief: project.brief, repoUrl: project.repoUrl, profile: project.profile ?? {} });
   }, [project]);
 
   if (!project) return <div className="panel"><div className="empty">No project selected.</div></div>;
@@ -50,6 +51,7 @@ export function Dashboard() {
             <input value={draft.genre} onChange={(e) => setDraft({ ...draft, genre: e.target.value })} placeholder="Genre" />
             <textarea rows={5} value={draft.brief} onChange={(e) => setDraft({ ...draft, brief: e.target.value })} placeholder="Project brief" />
             <input value={draft.repoUrl} onChange={(e) => setDraft({ ...draft, repoUrl: e.target.value })} placeholder="Code repository URL" />
+            <ProfileFields value={draft.profile} onChange={(profile) => setDraft({ ...draft, profile })} />
             <div className="actions">
               <button type="button" className="btn ghost" onClick={() => setEditing(false)}>Cancel</button>
               <span className="grow" />
@@ -62,6 +64,9 @@ export function Dashboard() {
               <div>
                 <div className="dash-title">{project.name}</div>
                 <div className="muted">{project.genre || 'Genre TBD'}</div>
+                <div className="small profile-line">
+                  {profileSummary(project.profile) || <span className="muted">No project profile yet: set the engine and genre so agents get the right knowledge.</span>}
+                </div>
               </div>
               <span className="grow" />
               {mode === 'live' && <button className="btn ghost" onClick={() => setEditing(true)}>Edit</button>}

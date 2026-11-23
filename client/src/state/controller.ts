@@ -1,4 +1,4 @@
-import type { AgentId, TaskPriority } from '@pixel/shared';
+import type { AgentId, ProjectProfile, TaskPriority } from '@pixel/shared';
 import { api, type NewTaskInput } from '../api/client';
 import { StudioSocket } from '../api/socket';
 import { Simulation } from '../sim/simulation';
@@ -122,14 +122,14 @@ export async function selectProject(id: string | null) {
 }
 
 export const actions = {
-  async createProject(p: { name: string; genre: string; brief: string; repoUrl: string }) {
+  async createProject(p: { name: string; genre: string; brief: string; repoUrl: string; profile?: ProjectProfile }) {
     if (S().mode === 'demo') return S().toast('Projects need the backend. Start the server first.', 'warn');
     const project = await api.createProject(p);
     S().set({ projects: [project, ...S().projects.filter((x) => x.id !== project.id)] });
     await selectProject(project.id);
     S().set({ tab: 'chat' });
   },
-  async updateProject(id: string, patch: { name?: string; genre?: string; brief?: string; repoUrl?: string }) {
+  async updateProject(id: string, patch: { name?: string; genre?: string; brief?: string; repoUrl?: string; profile?: ProjectProfile }) {
     if (S().mode === 'demo') return;
     await api.updateProject(id, patch).catch(report);
   },

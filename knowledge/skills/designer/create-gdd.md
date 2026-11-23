@@ -5,6 +5,11 @@ title: Create a game design document
 summary: Turn the owner brief into a buildable lean GDD at docs/GDD.md with pillars, core loop, specified mechanics, scope and acceptance-criteria traceability.
 triggers: gdd, game design document, design doc, concept document, write the design, initial design
 packs: design-craft, studio-core
+version: 1.0.0
+disciplines: progression, economy, level
+genres: any
+engines: any
+engine_dependent: false
 ---
 ## Purpose
 

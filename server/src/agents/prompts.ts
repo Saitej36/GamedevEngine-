@@ -36,7 +36,18 @@ export function projectContext(project: Project, milestones: Milestone[]) {
   const ms = milestones.length
     ? milestones.map((m) => `- [${m.status}] ${m.title}${m.dueDate ? ` (due ${m.dueDate})` : ''}`).join('\n')
     : '- (none yet)';
+  const pf = project.profile ?? {};
+  const profile = [
+    pf.engine ? `Engine: ${pf.engine}${pf.engineVersion ? ` ${pf.engineVersion}` : ''}` : 'Engine: not set in the project profile',
+    pf.platform ? `Platform: ${pf.platform}` : '',
+    pf.primaryGenre ? `Primary genre: ${pf.primaryGenre}${pf.secondaryGenre ? ` (secondary: ${pf.secondaryGenre})` : ''}` : '',
+    pf.programmingApproach ? `Programming approach: ${pf.programmingApproach}` : '',
+    pf.projectType ? `Project type: ${pf.projectType}` : '',
+  ]
+    .filter(Boolean)
+    .join('\n');
   return `Project: ${project.name}
+${profile}
 Genre: ${project.genre || 'TBD'}
 Code repository: ${project.repoUrl || '(none)'}
 Brief:

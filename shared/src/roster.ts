@@ -134,6 +134,7 @@ export const TASK_STATUS_LABEL: Record<TaskStatus, string> = {
   done: 'Done',
   failed: 'Failed',
   cancelled: 'Cancelled',
+  needs_clarification: 'Needs clarification',
 };
 
 export const TASK_STATUSES: TaskStatus[] = [
@@ -145,6 +146,7 @@ export const TASK_STATUSES: TaskStatus[] = [
   'done',
   'failed',
   'cancelled',
+  'needs_clarification',
 ];
 
 export function isAgentId(v: unknown): v is AgentId {

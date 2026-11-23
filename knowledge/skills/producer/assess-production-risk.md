@@ -5,6 +5,11 @@ title: Assess production risk
 summary: Create or update a risk register from the actual project state, scoring each risk as probability × impact with owner, response, trigger and review date.
 triggers: risk, risk register, risk assessment, what could go wrong, schedule risk, pert, contingency
 packs: production-craft, studio-core
+version: 1.0.0
+disciplines: publishing
+genres: any
+engines: any
+engine_dependent: false
 ---
 ## Purpose
 Identify the risks that could hurt scope, schedule or quality, score them consistently, and give each important one an

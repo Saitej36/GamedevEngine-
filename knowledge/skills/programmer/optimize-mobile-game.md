@@ -5,6 +5,11 @@ title: Optimize a game for mobile
 summary: Improve frame time, memory and battery use for mobile targets through code changes justified by measurements or clear hot-path analysis, with a measurement plan for the human.
 triggers: optimize, optimise, performance, slow, lag, low fps, stutter, hitch, mobile, battery, overheating, memory, garbage collection, draw calls, frame budget
 packs: engineering-craft, studio-core
+version: 1.0.0
+disciplines: performance
+genres: any
+engines: any
+engine_dependent: true
 ---
 ## Purpose
 Make the game hold its target frame rate and stay within memory and thermal limits on mobile devices. The agent cannot

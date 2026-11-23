@@ -5,6 +5,11 @@ title: Test a gameplay feature
 summary: Evaluate a gameplay feature for correctness, feel, balance, difficulty and exploits through static review of spec, data and code, and produce findings plus a human playtest script, labelling every result by how it was obtained.
 triggers: test feature, gameplay test, playtest, balance check, feel check, exploit check, verify mechanic
 packs: qa-craft, studio-core
+version: 1.0.0
+disciplines: feel, combat, input, performance
+genres: any
+engines: any
+engine_dependent: false
 ---
 ## Purpose
 Find problems in a gameplay feature before players do: rules that differ from the spec, poor feel, imbalance, difficulty

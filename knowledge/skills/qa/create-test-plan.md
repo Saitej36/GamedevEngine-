@@ -5,6 +5,11 @@ title: Create a test plan
 summary: Write a test plan for a feature or milestone that maps every acceptance criterion to functional, regression, gameplay and performance test cases, with honest execution status and run steps for humans.
 triggers: test plan, test cases, test strategy, qa plan, coverage, test matrix, verification plan
 packs: qa-craft, studio-core
+version: 1.0.0
+disciplines: performance, feel
+genres: any
+engines: any
+engine_dependent: false
 ---
 ## Purpose
 Define what will be tested, how, and how each result will be recorded, so that acceptance of a feature or milestone is

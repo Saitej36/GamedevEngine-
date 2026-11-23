@@ -5,6 +5,11 @@ title: Track dependencies and the critical path
 summary: Build or update a dependency register and critical path from the real task list and workspace files, flagging blocked and at-risk handoffs.
 triggers: dependencies, critical path, blockers, handoffs, sequencing, what is blocking, float, schedule check
 packs: production-craft, studio-core
+version: 1.0.0
+disciplines: 
+genres: any
+engines: any
+engine_dependent: false
 ---
 ## Purpose
 Show which tasks wait on which, which chain determines the delivery date, and which handoffs are blocked or at risk, so

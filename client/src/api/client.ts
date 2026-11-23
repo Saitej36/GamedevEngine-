@@ -1,4 +1,7 @@
 import type {
+  ImportedSkill,
+  ProjectProfile,
+  RoutingDecision,
   KnowledgeHit,
   KnowledgePack,
   KnowledgeSource,
@@ -43,6 +46,20 @@ async function req<T>(method: string, url: string, body?: unknown): Promise<T> {
   return data as T;
 }
 
+export interface RoutingPreview {
+  engine: string | null;
+  engineVersion: string | null;
+  engineSource: string;
+  engineConfidence: number;
+  genre: string | null;
+  disciplines: { id: string; score: number; matched: string[] }[];
+  supportingSkills: string[];
+  excluded: { refId: string; reason: string }[];
+  confidence: number;
+  reasons: string[];
+  clarification: string | null;
+}
+
 export interface ProjectDetail {
   project: Project;
   milestones: Milestone[];
@@ -72,7 +89,7 @@ export interface NewTaskInput {
 export const api = {
   info: () => req<ServerInfo>('GET', '/info'),
   projects: () => req<Project[]>('GET', '/projects'),
-  createProject: (p: { name: string; genre: string; brief: string; repoUrl: string }) => req<Project>('POST', '/projects', p),
+  createProject: (p: { name: string; genre: string; brief: string; repoUrl: string; profile?: ProjectProfile }) => req<Project>('POST', '/projects', p),
   updateProject: (id: string, p: Partial<Project>) => req<Project>('PATCH', `/projects/${id}`, p),
   deleteProject: (id: string) => req('DELETE', `/projects/${id}`),
   project: (id: string) => req<ProjectDetail>('GET', `/projects/${id}`),
@@ -108,7 +125,7 @@ export const api = {
   setSkillEnabled: (id: string, enabled: boolean) => req<Skill>('PUT', `/knowledge/skills/${encodeURIComponent(id)}`, { enabled }),
   setPackDepartments: (id: string, departments: AgentId[]) => req<KnowledgePack>('PUT', `/knowledge/packs/${encodeURIComponent(id)}/departments`, { departments }),
   knowledgeSearch: (agent: AgentId, q: string, projectId?: string | null) =>
-    req<{ tools: string[]; skill: Skill | null; hits: KnowledgeHit[] }>(
+    req<{ tools: string[]; skill: Skill | null; hits: KnowledgeHit[]; routing: RoutingPreview | null }>(
       'GET',
       `/knowledge/search?agent=${agent}&q=${encodeURIComponent(q)}${projectId ? `&projectId=${projectId}` : ''}`,
     ),
@@ -117,6 +134,9 @@ export const api = {
   refreshSource: (id: string) => req<KnowledgeSource>('POST', `/knowledge/sources/${id}/refresh`),
   deleteSource: (id: string) => req('DELETE', `/knowledge/sources/${id}`),
   sourceDoc: (id: string, docId: string) => req<{ path: string; title: string; content: string }>('GET', `/knowledge/sources/${id}/docs/${docId}`),
+  taskRouting: (id: string) => req<RoutingDecision[]>('GET', `/tasks/${id}/routing`),
+  skillImports: () => req<ImportedSkill[]>('GET', '/knowledge/skill-imports'),
+  reviewImport: (id: string, decision: 'approve' | 'reject', note: string) => req<ImportedSkill>('POST', `/knowledge/skill-imports/${id}/${decision}`, { note }),
   taskKnowledge: (id: string) => req<KnowledgeUsage[]>('GET', `/tasks/${id}/knowledge`),
   taskHistory: (id: string) => req<{ reviews: TaskReview[]; runs: AgentRun[] }>('GET', `/tasks/${id}/history`),
   usage: (projectId: string) => req<{ summary: UsageSummary; runs: AgentRun[] }>('GET', `/projects/${projectId}/usage`),

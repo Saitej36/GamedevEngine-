@@ -5,6 +5,11 @@ title: Plan a project from an owner request
 summary: Turn the owner's request into a vision, milestones and a dependency-ordered set of self-contained tasks with the right specialist, skill and checkable acceptance criteria.
 triggers: plan project, project plan, new game, kickoff, breakdown, roadmap, task breakdown, owner request, milestones, delegate
 packs: direction-craft, studio-core
+version: 1.0.0
+disciplines: 
+genres: any
+engines: any
+engine_dependent: false
 ---
 ## Purpose
 Convert an owner request into an executable plan: a written vision, milestones, and tasks created with `create_task`

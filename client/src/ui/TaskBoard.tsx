@@ -9,7 +9,7 @@ import { TaskHistory } from './History';
 import { api } from '../api/client';
 
 const COLUMNS: { title: string; statuses: TaskStatus[] }[] = [
-  { title: 'Queued', statuses: ['queued', 'revision'] },
+  { title: 'Queued', statuses: ['needs_clarification', 'queued', 'revision'] },
   { title: 'In progress', statuses: ['in_progress'] },
   { title: 'Review', statuses: ['in_review', 'awaiting_approval'] },
   { title: 'Done', statuses: ['done'] },
@@ -120,7 +120,16 @@ function TaskCard({ task: t, open, onToggle }: { task: Task; open: boolean; onTo
             </div>
           )}
           {mode === 'live' && <TaskHistory taskId={t.id} updatedAt={t.updatedAt} />}
-          {t.error && <div className="notice error">{t.error}</div>}
+          {t.status === 'needs_clarification' ? (
+            <div className="notice warn">
+              <strong>Waiting for your answer:</strong> {t.error}{' '}
+              <button className="link" onClick={() => useStudio.getState().set({ tab: 'dashboard' })}>
+                Open the project profile
+              </button>
+            </div>
+          ) : (
+            t.error && <div className="notice error">{t.error}</div>
+          )}
           {t.result && (
             <details>
               <summary>Agent report</summary>

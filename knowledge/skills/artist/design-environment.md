@@ -5,6 +5,11 @@ title: Design an environment tileset and backgrounds
 summary: Produce a modular SVG tileset, parallax background layers and a mock layout that proves the gameplay space is readable, with tile index documentation and manifest entries.
 triggers: environment, tileset, tiles, level art, background, parallax, terrain, autotile, props, scenery
 packs: art-craft, studio-core
+version: 1.0.0
+disciplines: level, art-pipeline
+genres: any
+engines: any
+engine_dependent: false
 ---
 ## Purpose
 Create environment art that is modular, cheap to reuse and readable for play: a tileset sheet, optional parallax

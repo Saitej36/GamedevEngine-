@@ -5,6 +5,11 @@ title: Review a deliverable against its acceptance criteria
 summary: Verify a completed task criterion by criterion against the actual files (not the report), then approve or request a specific, checkable revision with review_task.
 triggers: review, review task, review deliverable, approve, revise, acceptance, check work, quality gate, sign off
 packs: direction-craft, studio-core
+version: 1.0.0
+disciplines: 
+genres: any
+engines: any
+engine_dependent: false
 ---
 ## Purpose
 Decide with evidence whether a task's output meets its acceptance criteria, and either approve it or send back

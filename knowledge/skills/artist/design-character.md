@@ -5,6 +5,11 @@ title: Design a game character as SVG sprites
 summary: Design a readable character (silhouette, shape language, palette) and deliver real SVG pixel-art sprite sheets with documented cell size, pivot, frames and manifest entry.
 triggers: character, character design, sprite, player sprite, enemy sprite, npc, sprite sheet, animation frames, hero
 packs: art-craft, studio-core
+version: 1.0.0
+disciplines: animation, art-pipeline
+genres: any
+engines: any
+engine_dependent: false
 ---
 ## Purpose
 Turn a character requirement into a production-ready character: a design sheet explaining silhouette and shape choices,

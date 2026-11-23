@@ -5,6 +5,11 @@ title: Create a sprint plan
 summary: Build a sprint plan with a sprint goal, per-discipline capacity using a focus factor, committed items from the real task list, dependencies, risks and an explicit not-in-sprint list.
 triggers: sprint plan, sprint planning, iteration plan, next sprint, capacity, velocity, backlog commitment
 packs: production-craft, studio-core
+version: 1.0.0
+disciplines: publishing
+genres: any
+engines: any
+engine_dependent: false
 ---
 ## Purpose
 Create a realistic plan for one sprint that the team can finish, built from the actual backlog and workspace state,

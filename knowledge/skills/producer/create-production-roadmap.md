@@ -5,6 +5,11 @@ title: Create a production roadmap
 summary: Turn the project's design docs, task list and existing files into a milestone roadmap with exit criteria, estimates labelled as estimates, dependencies, risks and a cut list.
 triggers: roadmap, production plan, milestone plan, schedule, project plan, timeline, release plan
 packs: production-craft, studio-core
+version: 1.0.0
+disciplines: publishing
+genres: any
+engines: any
+engine_dependent: false
 ---
 ## Purpose
 Produce a milestone-based production roadmap that tells the team what state the game must reach at each milestone, in

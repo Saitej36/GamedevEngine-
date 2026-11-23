@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import type { ProjectProfile } from '@pixel/shared';
+import { ProfileFields } from './ProfileFields';
 import { AGENTS, AGENT_IDS, STATUS_LABEL } from '@pixel/shared';
 import { useStudio, type Tab } from '../state/store';
 import { actions, retryConnection, selectProject } from '../state/controller';
@@ -108,7 +110,7 @@ export function Tabs() {
 }
 
 export function NewProjectModal({ onClose }: { onClose: () => void }) {
-  const [form, setForm] = useState({ name: '', genre: '', brief: '', repoUrl: '' });
+  const [form, setForm] = useState<{ name: string; genre: string; brief: string; repoUrl: string; profile: ProjectProfile }>({ name: '', genre: '', brief: '', repoUrl: '', profile: {} });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   return (
@@ -147,6 +149,7 @@ export function NewProjectModal({ onClose }: { onClose: () => void }) {
             placeholder="Pitch, audience, platform, must-have features, references, constraints…"
           />
         </label>
+        <ProfileFields value={form.profile} onChange={(profile) => setForm({ ...form, profile })} />
         <label>
           Code repository (optional)
           <input value={form.repoUrl} onChange={(e) => setForm({ ...form, repoUrl: e.target.value })} placeholder="https://github.com/you/game" />

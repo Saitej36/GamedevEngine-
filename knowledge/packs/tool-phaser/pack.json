@@ -1,1 +1,19 @@
-{ "id": "tool-phaser", "title": "Phaser 3 & TypeScript (internal summary)", "layer": "tool", "description": "Internal summary of Phaser 3.90 with TypeScript: scenes, game objects, Arcade physics, input, asset loading, tilemaps, cameras, performance and testing pure logic outside Phaser.", "defaultDepartments": ["programmer", "qa"], "tools": ["phaser"], "version": "1.0", "license": "Pixel Studio internal", "trust": "internal" }
+{
+  "id": "tool-phaser",
+  "title": "Phaser 3 & TypeScript (internal summary)",
+  "layer": "tool",
+  "description": "Internal summary of Phaser 3.90 with TypeScript: scenes, game objects, Arcade physics, input, asset loading, tilemaps, cameras, performance and testing pure logic outside Phaser.",
+  "defaultDepartments": [
+    "programmer",
+    "qa"
+  ],
+  "tools": [
+    "phaser"
+  ],
+  "version": "1.0",
+  "license": "Pixel Studio internal",
+  "trust": "internal",
+  "engineVersions": {
+    "phaser": ">=3.90 <4"
+  }
+}

@@ -22,6 +22,7 @@ const DEMO_PROJECT: Project = {
   id: 'demo',
   name: 'Neon Drift (demo)',
   genre: 'Arcade racer',
+  profile: {},
   brief:
     'Simulated demo project. Start the backend (npm run dev) with an ANTHROPIC_API_KEY to run real AI agents that write real files.',
   repoUrl: '',

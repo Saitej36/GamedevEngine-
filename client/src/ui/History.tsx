@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import type { AgentRun, KnowledgeUsage, TaskReview } from '@pixel/shared';
+import type { AgentRun, KnowledgeUsage, RoutingDecision, TaskReview } from '@pixel/shared';
 import { AGENTS } from '@pixel/shared';
 import { api } from '../api/client';
 import { useStudio } from '../state/store';
@@ -33,14 +33,65 @@ export function TaskHistory({ taskId, updatedAt }: { taskId: string; updatedAt: 
   const usageVersion = useStudio((s) => s.usageVersion);
   const [data, setData] = useState<{ reviews: TaskReview[]; runs: AgentRun[] } | null>(null);
   const [knowledge, setKnowledge] = useState<KnowledgeUsage[]>([]);
+  const [routing, setRouting] = useState<RoutingDecision[]>([]);
   useEffect(() => {
     api.taskHistory(taskId).then(setData, () => setData(null));
     api.taskKnowledge(taskId).then(setKnowledge, () => setKnowledge([]));
+    api.taskRouting(taskId).then(setRouting, () => setRouting([]));
   }, [taskId, updatedAt, usageVersion]);
   if (!data) return null;
   const runKind = new Map(data.runs.map((r) => [r.id, `${RUN_KIND_LABEL[r.kind]} (${AGENTS[r.agentId]?.name.split(' ')[0] ?? r.agentId})`]));
   return (
     <>
+      {routing.length > 0 && (
+        <details className="history-block">
+          <summary>Routing ({routing.length} decision{routing.length === 1 ? '' : 's'})</summary>
+          {routing.map((r) => (
+            <div key={r.id} className={`routing ${r.clarificationRequired ? 'clarify' : ''}`}>
+              <div className="routing-head">
+                <strong>{r.runId ? (runKind.get(r.runId) ?? 'Run') : 'Not started'}</strong>
+                <span className="pill">confidence {Math.round(r.confidence * 100)}%</span>
+                {r.clarificationRequired && <span className="pill st-awaiting_approval">clarification required</span>}
+                <span className="grow" />
+                <span className="muted small">{timeAgo(r.createdAt)}</span>
+              </div>
+              <div className="routing-grid small">
+                <span className="muted">Engine</span>
+                <span>
+                  {r.engine ? `${r.engine}${r.engineVersion ? ` ${r.engineVersion}` : ' (version unknown)'}` : 'none'} <span className="muted">· from {r.engineSource} · {Math.round(r.engineConfidence * 100)}%</span>
+                </span>
+                <span className="muted">Genre</span>
+                <span>
+                  {r.genre ?? 'none'} <span className="muted">· from {r.genreSource}</span>
+                </span>
+                <span className="muted">Disciplines</span>
+                <span>{r.disciplines.map((d) => d.id).join(', ') || 'none'}</span>
+                <span className="muted">Skills</span>
+                <span>
+                  {r.primarySkill ?? 'none'}
+                  {r.supportingSkills.length > 0 && <span className="muted"> + {r.supportingSkills.join(', ')}</span>}
+                </span>
+                <span className="muted">References</span>
+                <span>
+                  {r.references.map((x) => `${x.refId} [${x.slot}${x.versionStatus === 'unverified' ? ', version unverified' : ''}]`).join(' · ') || 'none'}
+                </span>
+                {r.excluded.length > 0 && (
+                  <>
+                    <span className="muted">Excluded</span>
+                    <span>{r.excluded.map((x) => `${x.refId} (${x.reason})`).join(' · ')}</span>
+                  </>
+                )}
+              </div>
+              {r.clarificationRequired && <div className="notice warn small">{r.clarificationQuestion}</div>}
+              <ul className="routing-reasons small">
+                {r.reasons.map((x, i) => (
+                  <li key={i}>{x}</li>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </details>
+      )}
       {knowledge.length > 0 && (
         <details className="history-block">
           <summary>Knowledge used ({new Set(knowledge.map((k) => k.refId)).size} sources)</summary>

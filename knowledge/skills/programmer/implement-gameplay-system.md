@@ -5,6 +5,11 @@ title: Implement a gameplay system
 summary: Implement a gameplay mechanic or system from a design spec as testable pure logic plus a thin engine layer, with unit tests and an honest hand-off.
 triggers: implement, gameplay system, mechanic, feature, player movement, combat, scoring, inventory, spawning, enemy ai, build the game, prototype, code the system
 packs: engineering-craft, studio-core
+version: 1.0.0
+disciplines: combat, ai, input, save, procgen, progression, ui, feel
+genres: any
+engines: any
+engine_dependent: true
 ---
 ## Purpose
 Turn a designed mechanic (movement, combat, scoring, spawning, inventory, a state machine) into working source code that

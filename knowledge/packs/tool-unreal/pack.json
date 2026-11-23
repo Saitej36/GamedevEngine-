@@ -1,1 +1,19 @@
-{ "id": "tool-unreal", "title": "Unreal Engine 5 (internal summary)", "layer": "tool", "description": "Internal summary of Unreal Engine 5 practice: C++ and Blueprints split, gameplay framework, UPROPERTY/UFUNCTION, Gameplay Ability System basics, automation testing, profiling and packaging.", "defaultDepartments": ["programmer", "qa"], "tools": ["unreal"], "version": "1.0", "license": "Pixel Studio internal", "trust": "internal" }
+{
+  "id": "tool-unreal",
+  "title": "Unreal Engine 5 (internal summary)",
+  "layer": "tool",
+  "description": "Internal summary of Unreal Engine 5 practice: C++ and Blueprints split, gameplay framework, UPROPERTY/UFUNCTION, Gameplay Ability System basics, automation testing, profiling and packaging.",
+  "defaultDepartments": [
+    "programmer",
+    "qa"
+  ],
+  "tools": [
+    "unreal"
+  ],
+  "version": "1.0",
+  "license": "Pixel Studio internal",
+  "trust": "internal",
+  "engineVersions": {
+    "unreal": ">=5.4 <5.5"
+  }
+}
