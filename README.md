@@ -7,19 +7,31 @@ project workspace. You brief the Game Director; she plans, delegates, reviews an
 
 ```
 npm install
-cp .env.example .env      # add ANTHROPIC_API_KEY
+npm run setup:browser     # one time: downloads headless Chromium so QA can really launch games
+cp .env.example .env      # add ANTHROPIC_API_KEY (or be logged in to Claude Code on this machine)
 npm run dev               # server :8787 + client :5173 → open http://localhost:5173
 ```
 
 Requires Node.js 22.13+ (uses the built-in `node:sqlite`).
 
+On startup the server proves it can do real work before any task runs: it opens one minimal real Agent SDK
+session (fractions of a cent) and launches headless Chromium once. The top bar shows **● LIVE** only after the SDK
+answered; otherwise you see **AI configuration error** with the SDK's own message, and tasks stay queued.
+Generated games open from **Files → ▶ Preview game** (served on `PREVIEW_PORT`, default 8788, a separate origin).
+
 ## What runs where
 
 | Mode | When | What you see |
 |---|---|---|
-| **Live** | Server reachable and credentials present | Real agents. Every animation is driven by real agent events. NPCs roam (ambient simulation) only while idle. |
-| **AI offline** | Server reachable, no `ANTHROPIC_API_KEY` (or `AI_MODE=off`) | Everything works except agent execution: projects, manual tasks, files, approvals. Tasks stay queued — nothing is faked. |
-| **Demo** | Server not reachable | A clearly labelled client-side simulation (`SIM` tags, banner) that feeds the same event protocol to show how the office reacts. Produces no files. |
+| **Live** (default) | Server reachable and the startup Agent SDK session answered | Real agents writing real files. Employees show as working only during a real agent run; idle NPCs just walk around. |
+| **AI configuration error** | The startup Agent SDK session failed | The exact SDK error and a Re-check button. Projects, files and approvals work; tasks stay QUEUED. |
+| **AI disabled** | Only when you set `AI_MODE=off` | Same as above, by your choice. The server never switches to this on its own. |
+| **Server not reachable** | The client cannot reach `/api` | An error banner with Retry. Nothing is simulated. |
+| **Simulated demo** | Only when you click *Open simulated demo* or add `?demo` to the URL | A labelled client-side simulation. Produces no files and is never counted as work. |
+
+A task is COMPLETED only if its output files exist on disk (checked when the agent finishes and again at completion);
+an agent that reports success without writing a file is FAILED. Task states: QUEUED → STARTING (waiting for the SDK
+session) → RUNNING → REVIEW → WAITING_FOR_APPROVAL → COMPLETED, or FAILED with the real error.
 
 ## The team
 
@@ -144,6 +156,10 @@ The server emits `task_created`, `task_assigned`, `task_started`, `agent_working
   and run the server in a container if you enable it.
 - Per-run `maxTurns` and `maxBudgetUsd` limits; cancel aborts the running agent.
 - The file API serves agent output with `Content-Security-Policy: sandbox` and `nosniff`.
+- Generated games run only on the separate preview origin (127.0.0.1, read-only, CSP without network access to the
+  studio API); state-changing API requests must carry the `X-Pixel-Studio` header, so a generated page cannot forge one.
+- QA/Programmer playtests (`mcp__playtest__run_game`) serve the project on 127.0.0.1 and run it in headless Chromium
+  with all external requests blocked. It is not a shell: the agent can only load its own project's files.
 
 ## Project layout
 
@@ -164,6 +180,7 @@ REST highlights (`/api`): `projects`, `projects/:id` (brief, milestones, tasks, 
 | | |
 |---|---|
 | `npm run dev` | server (tsx watch) + Vite client with proxy |
+| `npm run setup:browser` | one-time Chromium download for real playtesting (Playwright is an optional dependency) |
 | `npm run build` && `npm start` | production: server on :8787 also serves `client/dist` |
 | `npm test` | server tests (permission guard, task lifecycle, usage/session/review tracking, migration) + client Markdown tests |
 | `npm run typecheck` | all workspaces |

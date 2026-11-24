@@ -24,5 +24,8 @@
     "@types/node": "^22.15.0",
     "@types/ws": "^8.18.1",
     "tsx": "^4.19.4"
+  },
+  "optionalDependencies": {
+    "playwright": "1.63.0"
   }
 }
