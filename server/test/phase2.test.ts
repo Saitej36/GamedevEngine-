@@ -283,3 +283,21 @@ test('citations: a revision may cite what the same agent retrieved earlier in th
   const c2 = k.checkCitations({ runId: r3.id, projectId: p.id, taskId: task.id, agentId: 'qa' }, [{ name: 'qa/plan.md', text: `[K:supplement:${sup.id}]` }]);
   assert.equal(c2.status, 'ok');
 });
+
+test('citations: citations already validated in a file written by an earlier task stay valid when that file is edited', () => {
+  const { store, k } = env();
+  const p = project(store, { engine: 'phaser', engineVersion: '3.90' });
+  const t1 = store.createTask({ projectId: p.id, title: 'build', description: 'd', assignee: 'programmer', createdBy: 'user' } as never);
+  const t2 = store.createTask({ projectId: p.id, title: 'fix', description: 'd', assignee: 'programmer', createdBy: 'user' } as never);
+  const r1 = store.startRun({ agentId: 'programmer', projectId: p.id, taskId: t1.id, kind: 'task' });
+  const hit = k.retrieve({ agentId: 'programmer', query: 'Phaser scene lifecycle', tools: ['phaser'], engineVersion: '3.90' })[0];
+  k.record({ runId: r1.id, projectId: p.id, taskId: t1.id, agentId: 'programmer', tools: ['phaser'] }, 'read', hit, '');
+  assert.equal(k.checkCitations({ runId: r1.id, projectId: p.id, taskId: t1.id, agentId: 'programmer' }, [{ name: 'src/Game.js', text: `// [K:${hit.refId}]` }]).status, 'ok');
+  const r2 = store.startRun({ agentId: 'programmer', projectId: p.id, taskId: t2.id, kind: 'task' });
+  const c = k.checkCitations({ runId: r2.id, projectId: p.id, taskId: t2.id, agentId: 'programmer' }, [{ name: 'src/Game.js', text: `// [K:${hit.refId}]\n// fixed` }]);
+  assert.equal(c.status, 'ok');
+  // Inherited only for the file where it was validated; a different file citing it in this task is invalid.
+  const r3 = store.startRun({ agentId: 'programmer', projectId: p.id, taskId: t2.id, kind: 'task' });
+  const c2 = k.checkCitations({ runId: r3.id, projectId: p.id, taskId: t2.id, agentId: 'programmer' }, [{ name: 'src/Other.js', text: `// [K:${hit.refId}]` }]);
+  assert.equal(c2.status, 'invalid');
+});

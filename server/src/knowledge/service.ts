@@ -1036,10 +1036,18 @@ ${sanitizeReference(truncate(h.text, 2400))}
     const available = new Set(usage.map((u) => u.refId));
     const explicit = new Set(thisRun.filter((u) => u.mode === 'search' || u.mode === 'read').map((u) => u.refId));
     const provided = usage.filter((u) => u.mode !== 'skill');
+    // Files edited in this run may already carry citations validated when an earlier task wrote them.
+    const inheritedFor = (file: string) =>
+      new Set(
+        (ctx.projectId ? this.store.listCitationChecks({ projectId: ctx.projectId }) : [])
+          .filter((c) => c.runId !== ctx.runId && c.filesChecked.includes(file))
+          .flatMap((c) => c.cited.map((r) => r.split('#')[0])),
+      );
     const cited = new Set<string>();
     const invalid: { ref: string; reason: string }[] = [];
     let declaredNone = false;
-    for (const t of texts)
+    for (const t of texts) {
+      const inherited = t.name.startsWith('(') ? new Set<string>() : inheritedFor(t.name);
       for (const m of t.text.matchAll(/\[K:\s*([^\]\s]+)\s*\]/g)) {
         const ref = m[1].replace(/[.,;:)]+$/, '');
         if (/^none$/i.test(ref)) {
@@ -1049,9 +1057,10 @@ ${sanitizeReference(truncate(h.text, 2400))}
         if (cited.has(ref) || invalid.some((x) => x.ref === ref)) continue;
         // A section citation like [K:design.core-loops#Pacing] counts for its document.
         const base = ref.split('#')[0];
-        if (available.has(base) || available.has(ref) || available.has(`skill:${base.replace(/^skill:/, '')}`)) cited.add(ref);
+        if (available.has(base) || available.has(ref) || available.has(`skill:${base.replace(/^skill:/, '')}`) || inherited.has(base)) cited.add(ref);
         else invalid.push({ ref, reason: this.refExists(base) ? 'never provided to or retrieved by this agent for this task' : 'unknown reference id' });
       }
+    }
     const citedBase = new Set([...cited].map((r) => r.split('#')[0]));
     const uncited = [...explicit].filter((r) => !citedBase.has(r));
     let status: CitationCheck['status'];

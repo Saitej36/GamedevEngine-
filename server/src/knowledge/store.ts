@@ -344,12 +344,13 @@ export class KnowledgeStore {
         JSON.stringify(c.filesChecked), c.summary, nowIso());
     return this.listCitationChecks({ id })[0];
   }
-  listCitationChecks(f: { id?: string; taskId?: string; runId?: string }): CitationCheck[] {
+  listCitationChecks(f: { id?: string; taskId?: string; runId?: string; projectId?: string }): CitationCheck[] {
     const where: string[] = [];
     const args: string[] = [];
     if (f.id) (where.push('id = ?'), args.push(f.id));
     if (f.taskId) (where.push('task_id = ?'), args.push(f.taskId));
     if (f.runId) (where.push('run_id = ?'), args.push(f.runId));
+    if (f.projectId) (where.push('project_id = ?'), args.push(f.projectId));
     const j = (v: unknown) => {
       try {
         return JSON.parse(s(v) || '[]');
