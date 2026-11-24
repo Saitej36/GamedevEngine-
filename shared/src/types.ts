@@ -265,6 +265,8 @@ export interface ServerInfo {
   credentialHint: string;
   /** Absolute folder holding every project's workspace on the server's disk. */
   workspacesDir: string;
+  /** Whether the studio can launch games in a real browser for QA/Programmer playtests. */
+  playtest: { state: 'unchecked' | 'ready' | 'unavailable'; detail: string; checkedAt: string | null };
   /** Port of the separate-origin game preview server (http://<host>:<port>/<projectId>/index.html). */
   previewPort: number;
   model: string;

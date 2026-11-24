@@ -17,6 +17,7 @@ import { workspaceRoot } from './workspace/workspace.js';
 import { aiHealth, checkAi, onAiHealth } from './agents/health.js';
 import { serverInfo } from './info.js';
 import { startPreviewServer } from './workspace/preview.js';
+import { checkPlaytest } from './agents/playtest.js';
 
 const db = openDb();
 const store = new Store(db);
@@ -62,6 +63,11 @@ server.listen(config.port, () => {
   log.info(`Pixel Studio server on http://localhost:${config.port}`);
   log.info(`AI mode: ${config.aiMode}; model ${config.model}; credentials: ${config.credentialHint || 'none detected'}`);
   if (aiHealth.state === 'unchecked') void checkAi();
+  void checkPlaytest().then((h) => {
+    if (h.state === 'ready') log.info('Playtest browser ready (headless Chromium launched)');
+    else log.error('Playtest browser unavailable', h.detail);
+    hub.broadcast({ kind: 'server_info', info: serverInfo() });
+  });
   log.info(`Workspaces: ${config.workspacesDir}`);
 });
 

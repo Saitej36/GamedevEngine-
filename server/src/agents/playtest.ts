@@ -79,6 +79,30 @@ interface Playwright {
   chromium: { launch(o: { headless: boolean; executablePath?: string }): Promise<{ newContext(o: object): Promise<any>; close(): Promise<void> }> };
 }
 /** Playwright is optional: resolved from the repo, then NODE_PATH. Missing → a clear, honest error. */
+/**
+ * Can the studio really launch a game? Checked once at startup (a real headless Chromium launch) so a broken
+ * test browser is visible to the owner up front instead of surfacing as BLOCKED test reports later.
+ */
+export const playtestHealth: { state: 'unchecked' | 'ready' | 'unavailable'; detail: string; checkedAt: string | null } = {
+  state: 'unchecked',
+  detail: 'Not checked yet',
+  checkedAt: null,
+};
+export async function checkPlaytest() {
+  try {
+    const b = await loadPlaywright().chromium.launch({ headless: true, executablePath: process.env.PIXEL_CHROMIUM || undefined });
+    await b.close();
+    Object.assign(playtestHealth, { state: 'ready', detail: 'Headless Chromium launched', checkedAt: nowIso() });
+  } catch (e) {
+    Object.assign(playtestHealth, {
+      state: 'unavailable',
+      detail: `${truncate(errorMessage(e).split('\n')[0], 400)} — games cannot be launched for QA. Install the browser with "npx playwright install chromium" (or set PLAYWRIGHT_BROWSERS_PATH / PIXEL_CHROMIUM) and restart the server.`,
+      checkedAt: nowIso(),
+    });
+  }
+  return { ...playtestHealth };
+}
+
 function loadPlaywright(): Playwright {
   const req = createRequire(path.join(REPO_ROOT, 'package.json'));
   const tries = ['playwright', ...(process.env.NODE_PATH ?? '').split(path.delimiter).filter(Boolean).map((p) => path.join(p, 'playwright'))];

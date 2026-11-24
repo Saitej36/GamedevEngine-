@@ -95,6 +95,13 @@ export function OfficeView() {
           )}
         </div>
       )}
+      {mode === 'live' && info?.ai.state === 'ready' && info.playtest?.state === 'unavailable' && (
+        <div className="office-banner warn">
+          <span className="banner-text">
+            <strong>PLAYTEST BROWSER UNAVAILABLE</strong> — {info.playtest.detail}
+          </span>
+        </div>
+      )}
       <div className="office-hint">Click an employee to open their profile · scroll to zoom · drag to pan</div>
     </div>
   );
