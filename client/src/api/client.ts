@@ -38,7 +38,7 @@ export class ApiError extends Error {
 async function req<T>(method: string, url: string, body?: unknown): Promise<T> {
   const res = await fetch(`/api${url}`, {
     method,
-    headers: body !== undefined ? { 'Content-Type': 'application/json' } : undefined,
+    headers: { 'X-Pixel-Studio': '1', ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}) },
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
   const text = await res.text();
@@ -135,6 +135,7 @@ export const api = {
   refreshSource: (id: string) => req<KnowledgeSource>('POST', `/knowledge/sources/${id}/refresh`),
   deleteSource: (id: string) => req('DELETE', `/knowledge/sources/${id}`),
   sourceDoc: (id: string, docId: string) => req<{ path: string; title: string; content: string }>('GET', `/knowledge/sources/${id}/docs/${docId}`),
+  checkAi: () => req<ServerInfo>('POST', '/ai/check'),
   taskRouting: (id: string) => req<RoutingDecision[]>('GET', `/tasks/${id}/routing`),
   skillImports: () => req<ImportedSkill[]>('GET', '/knowledge/skill-imports'),
   importBundles: () => req<ImportBundle[]>('GET', '/knowledge/import-bundles'),

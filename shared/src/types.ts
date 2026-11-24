@@ -248,9 +248,25 @@ export interface ProjectStats {
   byAgent: Record<AgentId, { total: number; done: number }>;
 }
 
+export interface AiHealthInfo {
+  /** disabled = AI_MODE=off; ready = a real Agent SDK session answered; error = the SDK's actual error. */
+  state: 'disabled' | 'unchecked' | 'checking' | 'ready' | 'error';
+  detail: string;
+  checkedAt: string | null;
+  sessionId: string | null;
+  costUsd: number | null;
+  durationMs: number | null;
+}
+
 export interface ServerInfo {
   aiMode: 'live' | 'offline';
   aiReason: string;
+  ai: AiHealthInfo;
+  credentialHint: string;
+  /** Absolute folder holding every project's workspace on the server's disk. */
+  workspacesDir: string;
+  /** Port of the separate-origin game preview server (http://<host>:<port>/<projectId>/index.html). */
+  previewPort: number;
   model: string;
   maxConcurrentAgents: number;
   bashEnabled: boolean;
@@ -290,6 +306,7 @@ export interface AgentEvent {
 /** Messages pushed over the WebSocket. */
 export type ServerMessage =
   | { kind: 'hello'; info: ServerInfo; agents: AgentState[] }
+  | { kind: 'server_info'; info: ServerInfo }
   | { kind: 'event'; event: AgentEvent }
   | { kind: 'agent_state'; state: AgentState }
   | { kind: 'task_updated'; task: Task }

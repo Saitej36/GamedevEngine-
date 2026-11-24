@@ -132,5 +132,15 @@ const MIME: Record<string, string> = {
   '.json': 'application/json',
   '.html': 'text/html',
   '.md': 'text/markdown',
+  '.js': 'text/javascript',
+  '.mjs': 'text/javascript',
+  '.css': 'text/css',
+  '.txt': 'text/plain',
+  '.wav': 'audio/wav',
+  '.mp3': 'audio/mpeg',
+  '.ogg': 'audio/ogg',
+  '.woff2': 'font/woff2',
+  '.ttf': 'font/ttf',
+  '.ico': 'image/x-icon',
 };
 export const mimeFor = (p: string) => MIME[path.extname(p).toLowerCase()] ?? 'text/plain';

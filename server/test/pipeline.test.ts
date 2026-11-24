@@ -1,4 +1,4 @@
-import './setup.js';
+import { deliver } from './setup.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { openDb } from '../src/db/db.js';
@@ -28,7 +28,7 @@ function setup(behaviour: (o: RunOptions) => Partial<RunResult> = () => ({})) {
       durationMs: null,
       model: null,
       turns: 1,
-      files: o.agentId === 'designer' ? ['docs/GDD.md'] : [],
+      files: o.agentId === 'designer' ? ['docs/GDD.md'] : await deliver(o),
       error: '',
       aborted: false,
       ...behaviour(o),

@@ -39,12 +39,26 @@ export async function boot() {
   await connect();
 }
 
+/** The simulated demo runs ONLY when explicitly requested (?demo in the URL or the "Open simulated demo" button). */
+const demoRequested = () => {
+  try {
+    return new URLSearchParams(window.location.search).has('demo');
+  } catch {
+    return false;
+  }
+};
+
 async function connect() {
+  if (demoRequested()) {
+    startDemo();
+    return;
+  }
   try {
     const info = await api.info();
-    S().set({ info, mode: 'live' });
-  } catch {
-    startDemo();
+    S().set({ info, mode: 'live', connectionError: '' });
+  } catch (e) {
+    // Never fall back to simulation: show the real problem.
+    S().set({ mode: 'disconnected', info: null, connectionError: e instanceof Error ? e.message : String(e) });
     return;
   }
   socket = new StudioSocket(
@@ -65,6 +79,19 @@ async function connect() {
   if (pick) await selectProject(pick.id);
 }
 
+/** Explicit, owner-selected demo. Nothing it shows is real work. */
+export function openDemo() {
+  startDemo();
+}
+
+export async function recheckAi() {
+  try {
+    S().set({ info: await api.checkAi() });
+  } catch (e) {
+    report(e);
+  }
+}
+
 function startDemo() {
   sim?.stop();
   S().set({ mode: 'demo', info: null });
@@ -79,6 +106,7 @@ export async function retryConnection() {
     sim?.stop();
     sim = null;
     S().set({ projects: [], projectId: null, tasks: [], chat: [], events: [], approvals: [] });
+    if (demoRequested()) window.history.replaceState(null, '', window.location.pathname);
     await connect();
     S().toast('Connected to the studio server', 'success');
   } catch {

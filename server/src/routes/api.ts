@@ -4,6 +4,8 @@ import express, { type NextFunction, type Request, type Response } from 'express
 import type { AgentId, ProjectProfile, TaskPriority } from '@pixel/shared';
 import { AGENTS, isAgentId } from '@pixel/shared';
 import { config } from '../config.js';
+import { checkAi } from '../agents/health.js';
+import { serverInfo } from '../info.js';
 import type { Store } from '../db/store.js';
 import type { Hub } from '../events/hub.js';
 import type { Studio } from '../orchestrator/studio.js';
@@ -67,20 +69,19 @@ export function apiRouter(store: Store, studio: Studio, hub: Hub) {
   const uploadJson = express.json({ limit: '30mb' });
   r.use((req, res, next) => (req.method === 'POST' && req.path === '/knowledge/sources' ? uploadJson : smallJson)(req, res, next));
 
+  r.use((req, res, next) => {
+    if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method) && req.get('X-Pixel-Studio') !== '1') {
+      res.status(403).json({ error: 'Missing X-Pixel-Studio header (cross-site requests are refused)' });
+      return;
+    }
+    next();
+  });
   r.get('/health', (_req, res) => {
     res.json({ ok: true });
   });
-  r.get(
-    '/info',
-    wrap(() => ({
-      aiMode: config.aiMode,
-      aiReason: config.aiReason,
-      model: config.model,
-      maxConcurrentAgents: config.maxConcurrentAgents,
-      bashEnabled: config.bashEnabled,
-      version: config.version,
-    })),
-  );
+  r.get('/info', wrap(() => serverInfo()));
+  // Re-run the real Agent SDK preflight (e.g. after fixing credentials).
+  r.post('/ai/check', wrap(async () => (await checkAi(), serverInfo())));
 
   // -- agents ---------------------------------------------------------------
   r.get('/agents', wrap(() => ({ profiles: AGENTS, states: store.listAgentStates(), running: studio.runningTasks() })));

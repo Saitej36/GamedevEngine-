@@ -125,16 +125,17 @@ export const STATUS_LABEL: Record<AgentStatus, string> = {
   error: 'Hit a problem',
 };
 
+/** Execution states as shown to the owner; each corresponds to a backend state change. */
 export const TASK_STATUS_LABEL: Record<TaskStatus, string> = {
-  queued: 'Queued',
-  in_progress: 'In progress',
-  in_review: 'Director review',
-  revision: 'Needs revision',
-  awaiting_approval: 'Awaiting approval',
-  done: 'Done',
-  failed: 'Failed',
-  cancelled: 'Cancelled',
-  needs_clarification: 'Needs clarification',
+  queued: 'QUEUED',
+  in_progress: 'RUNNING',
+  in_review: 'REVIEW',
+  revision: 'QUEUED (revision)',
+  awaiting_approval: 'WAITING_FOR_APPROVAL',
+  done: 'COMPLETED',
+  failed: 'FAILED',
+  cancelled: 'CANCELLED',
+  needs_clarification: 'WAITING_FOR_APPROVAL (clarification)',
 };
 
 export const TASK_STATUSES: TaskStatus[] = [

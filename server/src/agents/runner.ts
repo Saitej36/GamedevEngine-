@@ -246,6 +246,7 @@ export async function runAgent(o: RunOptions): Promise<RunResult> {
         } catch (e) {
           log.warn('onSession callback failed', e);
         }
+        working(`Agent SDK session started (${msg.model ?? config.model})`, 'working', { sessionStarted: true, sessionId: msg.session_id });
       } else if (msg.type === 'assistant') {
         if (msg.parent_tool_use_id) continue;
         for (const block of msg.message.content) {

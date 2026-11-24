@@ -357,3 +357,10 @@ button.pill { cursor: pointer; }
 .routing-reasons { margin: 2px 0 0; padding-left: 16px; color: var(--muted); }
 .import-row { border-top: 1px solid var(--border); padding: 6px 0; display: grid; gap: 4px; font-size: 13px; }
 .error-text { color: var(--red); }
+
+/* Real-state banners and file explorer header */
+.office-banner.error { border-color: #7f1d1d; }
+.office-banner.error strong { color: var(--red, #f87171); font-family: var(--pixel); font-size: 10px; }
+.badge.error { color: var(--red, #f87171); border-color: #7f1d1d; cursor: pointer; }
+.files-head { display: flex; gap: 8px; align-items: center; padding: 6px 8px; border-bottom: 1px solid var(--line, #2a2f3a); flex-wrap: wrap; }
+.files-head code { word-break: break-all; }

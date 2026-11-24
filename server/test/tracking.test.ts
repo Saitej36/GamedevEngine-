@@ -1,4 +1,4 @@
-import './setup.js';
+import { deliver } from './setup.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
@@ -29,7 +29,7 @@ function setup(behaviour: Behaviour) {
       durationMs: 1000,
       model: 'claude-opus-5-5',
       turns: 3,
-      files: [],
+      files: await deliver(o),
       error: '',
       aborted: false,
       ...(await behaviour(o)),

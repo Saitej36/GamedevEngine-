@@ -1,4 +1,4 @@
-import './setup.js';
+import { deliver } from './setup.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -228,7 +228,7 @@ test('routing history: every run stores its decision; unroutable tasks are parke
   const runner = async (o: RunOptions): Promise<RunResult> => {
     calls.push(o);
     // Stand-in agent declares it relied on no reference (the citation check would otherwise send it back).
-    return { ok: true, sessionId: 's', text: 'done [K:none]', costUsd: 0.01, costAvailable: true, usage: null, durationMs: null, model: null, turns: 1, files: [], error: '', aborted: false };
+    return { ok: true, sessionId: 's', text: 'done [K:none]', costUsd: 0.01, costAvailable: true, usage: null, durationMs: null, model: null, turns: 1, files: await deliver(o), error: '', aborted: false };
   };
   const studio = new Studio(store, hub, runner, () => true, k);
   const p = studio.createProject({ name: 'H', genre: '', brief: '', repoUrl: '' });

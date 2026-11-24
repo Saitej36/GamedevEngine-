@@ -58,9 +58,28 @@ export function FileExplorer() {
       </div>
     );
 
+  const info = useStudio.getState().info;
+  const hasIndex = !!tree?.children?.some((n) => n.path === 'index.html');
+  const previewUrl = info && projectId ? `${window.location.protocol}//${window.location.hostname}:${info.previewPort}/${projectId}/index.html` : '';
   return (
     <div className="panel files">
       {error && <div className="notice error">{error}</div>}
+      <div className="files-head small">
+        <span className="muted" title="Absolute folder on the studio server's disk">
+          Folder: <code>{info ? `${info.workspacesDir}/${projectId}` : projectId}</code>
+        </span>
+        <span className="grow" />
+        <button className="btn ghost small" onClick={() => projectId && api.files(projectId).then(setTree, (e) => setError(String(e.message ?? e)))}>
+          Refresh
+        </button>
+        {hasIndex ? (
+          <a className="btn primary small" href={previewUrl} target="_blank" rel="noopener noreferrer" title="Runs the game from the workspace on a separate origin">
+            ▶ Preview game
+          </a>
+        ) : (
+          <span className="muted">No index.html yet</span>
+        )}
+      </div>
       <div className="files-split">
         <div className="tree">{tree?.children?.map((n) => <TreeNode key={n.path} node={n} selected={selected} onSelect={setSelected} depth={0} />)}</div>
         <div className="preview">

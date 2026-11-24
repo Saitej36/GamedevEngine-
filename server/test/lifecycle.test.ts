@@ -1,4 +1,4 @@
-import './setup.js';
+import { deliver } from './setup.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -34,7 +34,7 @@ function setup(behaviour: (o: RunOptions) => Partial<RunResult>) {
       durationMs: null,
       model: null,
       turns: 1,
-      files: [],
+      files: await deliver(o),
       error: '',
       aborted: false,
       ...behaviour(o),
@@ -115,6 +115,12 @@ test('retry: the next attempt is told why the last one stopped and which files i
   const { store, studio, project, calls } = setup((o) => {
     if (o.agentId !== 'programmer') return {};
     attempt++;
+    if (attempt === 1)
+      for (const f of ['src/Core/Motor.cs', 'tests/MotorTests.cs']) {
+        const abs = path.join(workspaceRoot(o.projectId), f);
+        fs.mkdirSync(path.dirname(abs), { recursive: true });
+        fs.writeFileSync(abs, '// partial');
+      }
     return attempt === 1
       ? { ok: false, error: 'Stopped at the $2 budget limit for one task', files: ['src/Core/Motor.cs', 'tests/MotorTests.cs'] }
       : { files: ['README.md'] };

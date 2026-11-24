@@ -35,13 +35,27 @@ export function TopBar({ onNewProject, onKnowledge }: { onNewProject: () => void
       </div>
       <span className="grow" />
       {mode === 'live' && info && (
-        <span className={`badge ${info.aiMode === 'live' ? 'ok' : 'warn'}`} title={info.aiReason}>
-          {info.aiMode === 'live' ? `● AI live · ${info.model}` : '● AI offline'}
+        <span
+          className={`badge ${info.ai.state === 'ready' ? 'ok' : info.ai.state === 'error' ? 'error' : 'warn'}`}
+          title={`${info.ai.detail}${info.ai.sessionId ? ` · test session ${info.ai.sessionId}` : ''}`}
+        >
+          {info.ai.state === 'ready'
+            ? `● LIVE · ${info.model}`
+            : info.ai.state === 'error'
+              ? '● AI configuration error'
+              : info.ai.state === 'disabled'
+                ? '● AI disabled (AI_MODE=off)'
+                : '● Checking AI…'}
         </span>
       )}
+      {mode === 'disconnected' && (
+        <button className="badge error" onClick={() => retryConnection()} title="Studio server not reachable — click to retry">
+          ● Server not reachable
+        </button>
+      )}
       {mode === 'demo' && (
-        <button className="badge warn" onClick={() => retryConnection()} title="Backend not reachable — click to retry">
-          ● Demo mode (simulated)
+        <button className="badge warn" onClick={() => retryConnection()} title="You opened the simulated demo — click to leave it">
+          ● SIMULATED DEMO
         </button>
       )}
       {mode === 'connecting' && <span className="badge">Connecting…</span>}

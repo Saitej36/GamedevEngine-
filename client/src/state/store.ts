@@ -14,7 +14,7 @@ import type {
 } from '@pixel/shared';
 import { AGENT_IDS, EVENT_ANIMATION } from '@pixel/shared';
 
-export type Mode = 'connecting' | 'live' | 'demo';
+export type Mode = 'connecting' | 'live' | 'disconnected' | 'demo';
 export type Tab = 'chat' | 'tasks' | 'approvals' | 'files' | 'dashboard' | 'timeline';
 
 export interface Toast {
@@ -25,6 +25,8 @@ export interface Toast {
 
 interface StudioState {
   mode: Mode;
+  /** Why the studio server could not be reached (shown instead of silently simulating). */
+  connectionError: string;
   info: ServerInfo | null;
   projects: Project[];
   projectId: string | null;
@@ -74,6 +76,7 @@ const MAX_EVENTS = 600;
 
 export const useStudio = create<StudioState>((set, get) => ({
   mode: 'connecting',
+  connectionError: '',
   info: null,
   projects: [],
   projectId: null,
@@ -107,6 +110,9 @@ export const useStudio = create<StudioState>((set, get) => ({
     const s = get();
     const inProject = (pid: string | null) => !pid || pid === s.projectId;
     switch (msg.kind) {
+      case 'server_info':
+        set({ info: msg.info });
+        break;
       case 'hello': {
         const agents = idleAgents();
         for (const a of msg.agents) agents[a.agentId] = a;

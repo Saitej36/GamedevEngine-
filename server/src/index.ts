@@ -14,6 +14,9 @@ import { log } from './util.js';
 import { KnowledgeService } from './knowledge/service.js';
 import { KnowledgeStore } from './knowledge/store.js';
 import { workspaceRoot } from './workspace/workspace.js';
+import { aiHealth, checkAi, onAiHealth } from './agents/health.js';
+import { serverInfo } from './info.js';
+import { startPreviewServer } from './workspace/preview.js';
 
 const db = openDb();
 const store = new Store(db);
@@ -24,7 +27,12 @@ const knowledge = new KnowledgeService(new KnowledgeStore(db), {
   projectRoot: workspaceRoot,
   githubToken: process.env.GITHUB_TOKEN,
 });
-const studio = new Studio(store, hub, undefined, undefined, knowledge);
+// Agents run only after a real Agent SDK session has answered (never a guess from environment variables).
+const studio = new Studio(store, hub, undefined, () => config.aiMode === 'live' && aiHealth.state === 'ready', knowledge);
+onAiHealth(() => {
+  hub.broadcast({ kind: 'server_info', info: serverInfo() });
+  if (aiHealth.state === 'ready') studio.kick();
+});
 
 const app = express();
 app.disable('x-powered-by');
@@ -38,18 +46,12 @@ if (fs.existsSync(clientDist)) {
 }
 
 const server = http.createServer(app);
+startPreviewServer(config.previewPort);
 const wss = new WebSocketServer({ server, path: '/ws' });
 wss.on('connection', (ws) => {
   hub.attach(ws, {
     kind: 'hello',
-    info: {
-      aiMode: config.aiMode,
-      aiReason: config.aiReason,
-      model: config.model,
-      maxConcurrentAgents: config.maxConcurrentAgents,
-      bashEnabled: config.bashEnabled,
-      version: config.version,
-    },
+    info: serverInfo(),
     agents: store.listAgentStates(),
   });
 });
@@ -58,7 +60,8 @@ studio.recover();
 
 server.listen(config.port, () => {
   log.info(`Pixel Studio server on http://localhost:${config.port}`);
-  log.info(`AI mode: ${config.aiMode} (${config.aiReason}); model ${config.model}`);
+  log.info(`AI mode: ${config.aiMode}; model ${config.model}; credentials: ${config.credentialHint || 'none detected'}`);
+  if (aiHealth.state === 'unchecked') void checkAi();
   log.info(`Workspaces: ${config.workspacesDir}`);
 });
 

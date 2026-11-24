@@ -39,9 +39,9 @@ export function ChatPanel() {
 
   return (
     <div className="panel chat">
-      {mode === 'live' && info?.aiMode === 'offline' && (
-        <div className="notice warn">
-          <strong>AI offline.</strong> {info.aiReason}
+      {mode === 'live' && info && info.ai.state !== 'ready' && (
+        <div className={`notice ${info.ai.state === 'error' ? 'error' : 'warn'}`}>
+          <strong>{info.ai.state === 'error' ? 'AI configuration error.' : info.ai.state === 'disabled' ? 'AI disabled.' : 'Checking the Claude Agent SDK…'}</strong> {info.ai.detail}
         </div>
       )}
       <div className="chat-list" ref={listRef}>

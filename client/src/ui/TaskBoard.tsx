@@ -76,6 +76,17 @@ function TaskCard({ task: t, open, onToggle }: { task: Task; open: boolean; onTo
   const allTasks = useStudio((s) => s.tasks);
   const prereqs = t.dependsOn.map((id) => allTasks.find((x) => x.id === id)).filter((x): x is Task => !!x);
   const waitingOn = prereqs.filter((p) => p.status !== 'done');
+  const events = useStudio((s) => s.events);
+  // STARTING until the backend reports that the real Agent SDK session for this attempt has started.
+  const mine = events.filter((e) => e.taskId === t.id && !e.simulated);
+  const lastStart = mine.filter((e) => e.type === 'task_started').at(-1)?.createdAt ?? t.startedAt ?? '';
+  const sessionUp = mine.some((e) => e.createdAt >= lastStart && e.data?.sessionStarted === true);
+  const label = t.status === 'in_progress' && !sessionUp ? 'STARTING' : TASK_STATUS_LABEL[t.status];
+  const fileEvents = mine.filter((e) => e.type === 'file_created' && typeof e.data.path === 'string');
+  const created = new Set(fileEvents.filter((e) => /^Created /.test(e.message)).map((e) => String(e.data.path)));
+  const modified = new Set(fileEvents.filter((e) => /^Updated /.test(e.message)).map((e) => String(e.data.path)).filter((f) => !created.has(f)));
+  const end = t.completedAt ? Date.parse(t.completedAt) : ['in_progress', 'in_review'].includes(t.status) ? Date.now() : Date.parse(t.updatedAt);
+  const duration = t.startedAt ? Math.max(0, Math.round((end - Date.parse(t.startedAt)) / 1000)) : null;
   return (
     <div className={`card task-card prio-${t.priority} st-${t.status}`}>
       <button className="task-head" onClick={onToggle}>
@@ -83,7 +94,7 @@ function TaskCard({ task: t, open, onToggle }: { task: Task; open: boolean; onTo
         <span className="task-title">{t.title}</span>
       </button>
       <div className="task-meta">
-        <span className={`pill st-${t.status}`}>{TASK_STATUS_LABEL[t.status]}</span>
+        <span className={`pill st-${t.status}`}>{label}</span>
         {t.revisionCount > 0 && <span className="pill">rev {t.revisionCount}</span>}
         {t.requiresApproval && <span className="pill">sign-off</span>}
         {t.skillId && <span className="pill" title="Studio skill assigned to this task">skill: {t.skillId}</span>}
@@ -100,8 +111,23 @@ function TaskCard({ task: t, open, onToggle }: { task: Task; open: boolean; onTo
         <div className="task-detail">
           <div className="muted small">
             {AGENTS[t.assignee].name} · created by {t.createdBy === 'user' ? 'you' : AGENTS[t.createdBy].name}
-            {t.costUsd > 0 && ` · $${t.costUsd.toFixed(3)}`}
+            {t.costUsd > 0 && ` · $${t.costUsd.toFixed(3)} (actual SDK cost)`}
+            {duration !== null && ` · ${duration >= 60 ? `${Math.floor(duration / 60)}m ${duration % 60}s` : `${duration}s`} since start`}
           </div>
+          {t.files.length > 0 && (
+            <div className="small">
+              <span className="muted">Output files (verified on disk): </span>
+              {t.files.map((f, i) => (
+                <span key={f}>
+                  {i > 0 && ', '}
+                  <button className="link" onClick={() => useStudio.getState().set({ tab: 'files', openFile: f })}>
+                    {f}
+                  </button>
+                  {created.has(f) ? <span className="muted"> (created)</span> : modified.has(f) ? <span className="muted"> (modified)</span> : null}
+                </span>
+              ))}
+            </div>
+          )}
           <Markdown text={t.description} />
           {prereqs.length > 0 && (
             <div className="small">

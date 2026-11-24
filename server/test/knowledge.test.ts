@@ -1,4 +1,4 @@
-import './setup.js';
+import { deliver } from './setup.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
@@ -224,7 +224,7 @@ test('integration: a task run receives its skill and references, and usage is re
   const calls: RunOptions[] = [];
   const runner = async (o: RunOptions): Promise<RunResult> => {
     calls.push(o);
-    return { ok: true, sessionId: 's', text: 'done', costUsd: 0.01, costAvailable: true, usage: null, durationMs: null, model: null, turns: 1, files: [], error: '', aborted: false };
+    return { ok: true, sessionId: 's', text: 'done', costUsd: 0.01, costAvailable: true, usage: null, durationMs: null, model: null, turns: 1, files: await deliver(o), error: '', aborted: false };
   };
   const studio = new Studio(store, hub, runner, () => true, k);
   const p = studio.createProject({ name: 'U', genre: 'Unity 3D platformer', brief: 'Built in Unity 6 with C#.', repoUrl: '' });

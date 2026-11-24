@@ -786,8 +786,12 @@ ${sanitizeReference(truncate(h.text, 2400))}
     }
   }
 
-  recordSkill(ctx: KnowledgeContext, skill: Skill, how: string) {
+  recordSkill(ctx: KnowledgeContext, skill: Skill, how: string, primary = true) {
     this.store.addUsage({ runId: ctx.runId, projectId: ctx.projectId, taskId: ctx.taskId, agentId: ctx.agentId, mode: 'skill', refId: `skill:${skill.id}`, title: skill.title, section: how, origin: 'skill', trust: 'internal', query: '', score: null });
+    // Approved supplements are injected with the skill: record them so they are traceable and citable.
+    if (primary)
+      for (const sup of this.supplementsFor(skill.id))
+      this.store.addUsage({ runId: ctx.runId, projectId: ctx.projectId, taskId: ctx.taskId, agentId: ctx.agentId, mode: 'skill', refId: `supplement:${sup.id}`, title: sup.title, section: `imported guidance for ${skill.id}`, origin: 'skill', trust: 'community', query: '', score: null });
   }
 
   usage(f: { taskId?: string; runId?: string; projectId?: string }) {
@@ -1023,9 +1027,14 @@ ${sanitizeReference(truncate(h.text, 2400))}
   // Citation check: every [K:…] must name a reference this run actually had; references relied on must be cited.
   // ---------------------------------------------------------------------------
   checkCitations(ctx: { runId: string; projectId: string | null; taskId: string | null; agentId: AgentId }, texts: { name: string; text: string }[]): CitationCheck {
-    const usage = this.store.listUsage({ runId: ctx.runId });
+    // A revision resumes the same Agent SDK session, so everything this agent was given or retrieved in earlier
+    // runs of the same task is still in its context and may be cited.
+    const usage = ctx.taskId
+      ? this.store.listUsage({ taskId: ctx.taskId }).filter((u) => u.agentId === ctx.agentId)
+      : this.store.listUsage({ runId: ctx.runId });
+    const thisRun = usage.filter((u) => u.runId === ctx.runId);
     const available = new Set(usage.map((u) => u.refId));
-    const explicit = new Set(usage.filter((u) => u.mode === 'search' || u.mode === 'read').map((u) => u.refId));
+    const explicit = new Set(thisRun.filter((u) => u.mode === 'search' || u.mode === 'read').map((u) => u.refId));
     const provided = usage.filter((u) => u.mode !== 'skill');
     const cited = new Set<string>();
     const invalid: { ref: string; reason: string }[] = [];
@@ -1041,7 +1050,7 @@ ${sanitizeReference(truncate(h.text, 2400))}
         // A section citation like [K:design.core-loops#Pacing] counts for its document.
         const base = ref.split('#')[0];
         if (available.has(base) || available.has(ref) || available.has(`skill:${base.replace(/^skill:/, '')}`)) cited.add(ref);
-        else invalid.push({ ref, reason: this.refExists(base) ? 'not provided to or retrieved by this run' : 'unknown reference id' });
+        else invalid.push({ ref, reason: this.refExists(base) ? 'never provided to or retrieved by this agent for this task' : 'unknown reference id' });
       }
     const citedBase = new Set([...cited].map((r) => r.split('#')[0]));
     const uncited = [...explicit].filter((r) => !citedBase.has(r));
@@ -1060,7 +1069,7 @@ ${sanitizeReference(truncate(h.text, 2400))}
             ? `Agent declared it relied on no reference ([K:none])${uncited.length ? ` although it searched/read ${uncited.join(', ')}` : ''}.`
             : status === 'not-needed'
               ? 'No references were provided; no citation required.'
-              : `References were provided (${provided.length}) but the deliverables cite none and do not declare [K:none].${uncited.length ? ` Searched/read: ${uncited.join(', ')}.` : ''}`;
+              : `References were provided (${new Set(provided.map((u) => u.refId)).size}) but the deliverables cite none and do not declare [K:none].${uncited.length ? ` Searched/read: ${uncited.join(', ')}.` : ''}`;
     return this.store.addCitationCheck({ ...ctx, status, cited: [...cited], invalid, uncited, filesChecked: texts.map((t) => t.name), summary });
   }
 

@@ -23,13 +23,22 @@ silhouette rules, UI style) in docs/art/STYLE_GUIDE.md and reference each asset 
 HTML5 Canvas game: index.html at the project root loading ES modules from src/ (no build step, opens directly in a
 browser or via any static server). Keep code modular (src/main.js, src/game/*.js), readable and commented where non-obvious.
 Use art from assets/ when it exists. Add lightweight tests in tests/ when logic is testable. Never leave placeholder TODO
-stubs for core features you were asked to build.`,
+stubs for core features you were asked to build.
+For a Phaser project, call mcp__playtest__add_library({name:"phaser"}) to copy the studio's local Phaser build into
+public/vendor/ and load it with a <script> tag (never a CDN: the test browser blocks all external network). Then call
+mcp__playtest__run_game to launch the game in a real headless browser, drive it with keys/clicks/probes and fix every
+page error or console error it reports. In your report, state exactly what was run (run_game results) and what was not;
+never call code compiled, tested or working unless a tool actually ran it.`,
   producer: `As Producer you keep the project on track. Write docs/production/ROADMAP.md (milestones, deliverables,
 owners), docs/production/RISKS.md (risk, likelihood, impact, mitigation) and status reports
 (docs/production/STATUS-YYYY-MM-DD.md) grounded in the actual task list and files in the workspace.`,
   qa: `As QA Tester you verify the work. Read the code and design docs, then write qa/TEST_PLAN.md and file bugs as
 qa/bugs/BUG-###-short-title.md with: severity, steps to reproduce, expected vs actual, and the file/line suspected.
-Be specific and reproducible. You may add automated tests under tests/. Do not fix production code yourself — report it.`,
+Be specific and reproducible. You may add automated tests under tests/. Do not fix production code yourself — report it.
+To test a browser game for real, call mcp__playtest__run_game: it opens the project in a headless Chromium, holds keys,
+clicks, evaluates probe expressions (e.g. reading score/health from the running game) and returns console output, page
+errors and screenshots. Mark a test case PASS or FAIL only when run_game actually exercised it, and quote the evidence
+(probe values, errors, screenshot path). Cases you could not run are NOT EXECUTED — say so; never mark them passed.`,
 };
 
 export function projectContext(project: Project, milestones: Milestone[]) {

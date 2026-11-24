@@ -124,7 +124,7 @@ test('citations: valid, invalid, missing, declared-none and not-needed are told 
   assert.equal(k.checkCitations(ctx, [{ name: 'a.md', text: `Uses mapping contexts [K:${hit.refId}].` }]).status, 'ok');
   const bad = k.checkCitations(ctx, [{ name: 'a.md', text: `See [K:${hit.refId}] and [K:design.core-loops] and [K:made.up]` }]);
   assert.equal(bad.status, 'invalid');
-  assert.deepEqual(bad.invalid.map((x) => x.reason), ['not provided to or retrieved by this run', 'unknown reference id']);
+  assert.deepEqual(bad.invalid.map((x) => x.reason), ['never provided to or retrieved by this agent for this task', 'unknown reference id']);
   assert.equal(k.checkCitations(ctx, [{ name: 'a.md', text: 'No citations here.' }]).status, 'missing');
   assert.equal(k.checkCitations(ctx, [{ name: 'a.md', text: 'Relied on nothing [K:none].' }]).status, 'declared-none');
   const run2 = store.startRun({ agentId: 'programmer', projectId: p.id, taskId: null, kind: 'task' });
@@ -258,4 +258,28 @@ test('imports: every bundled file carries attribution, a pinned commit, the righ
     assert.doesNotMatch(body, /```gdscript/i, it[1].id);
     if (it[1].engine) assert.match(body, /has NOT been compiled or run/, it[1].id);
   }
+});
+
+test('citations: a revision may cite what the same agent retrieved earlier in the task; supplements are citable', () => {
+  const { store, k } = env();
+  const p = project(store, { engine: 'unreal', engineVersion: '5.4' });
+  const task = store.createTask({ projectId: p.id, title: 't', description: 'd', assignee: 'qa', createdBy: 'user' } as never);
+  const r1 = store.startRun({ agentId: 'qa', projectId: p.id, taskId: task.id, kind: 'task' });
+  const r2 = store.startRun({ agentId: 'qa', projectId: p.id, taskId: task.id, kind: 'task' });
+  const other = store.startRun({ agentId: 'programmer', projectId: p.id, taskId: task.id, kind: 'task' });
+  const hit = k.retrieve({ agentId: 'qa', query: 'acceptance criteria test plan', tools: [] })[0];
+  k.record({ runId: r1.id, projectId: p.id, taskId: task.id, agentId: 'qa', tools: [] }, 'read', hit, '');
+  // Another agent's retrieval on the same task does not make a ref valid for QA.
+  k.record({ runId: other.id, projectId: p.id, taskId: task.id, agentId: 'programmer', tools: [] }, 'read', { ...hit, refId: 'eng.code-review' }, '');
+  const c = k.checkCitations({ runId: r2.id, projectId: p.id, taskId: task.id, agentId: 'qa' }, [{ name: 'qa/plan.md', text: `[K:${hit.refId}] [K:eng.code-review]` }]);
+  assert.deepEqual(c.cited, [hit.refId]);
+  assert.deepEqual(c.invalid.map((x) => x.ref), ['eng.code-review']);
+  // Supplements injected with the primary skill are recorded and citable.
+  k.importBundle('phase2-gamedev');
+  const sup = k.imports().find((i) => i.targetSkillId === 'create-test-plan')!;
+  k.approveImport(sup.id, 'ok');
+  const r3 = store.startRun({ agentId: 'qa', projectId: p.id, taskId: task.id, kind: 'task' });
+  k.recordSkill({ runId: r3.id, projectId: p.id, taskId: task.id, agentId: 'qa', tools: [] }, k.skill('create-test-plan')!, 'assigned');
+  const c2 = k.checkCitations({ runId: r3.id, projectId: p.id, taskId: task.id, agentId: 'qa' }, [{ name: 'qa/plan.md', text: `[K:supplement:${sup.id}]` }]);
+  assert.equal(c2.status, 'ok');
 });

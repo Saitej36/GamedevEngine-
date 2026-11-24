@@ -24,15 +24,33 @@ function bool(v: string | undefined, dflt: boolean) {
   return /^(1|true|yes|on)$/i.test(v);
 }
 
-const hasCredentials = Boolean(
-  env.ANTHROPIC_API_KEY || env.ANTHROPIC_AUTH_TOKEN || env.CLAUDE_CODE_OAUTH_TOKEN ||
-    env.CLAUDE_CODE_USE_BEDROCK || env.CLAUDE_CODE_USE_VERTEX || env.CLAUDE_CODE_USE_FOUNDRY,
-);
+const claudeConfigDir = env.CLAUDE_CONFIG_DIR || path.join(env.HOME || env.USERPROFILE || '', '.claude');
+/**
+ * Credentials we can see. Only a hint: on macOS a Claude Code login lives in the Keychain, so the real answer
+ * comes from the startup preflight (a minimal real Agent SDK call), never from this guess.
+ */
+const credentialHint = env.ANTHROPIC_API_KEY
+  ? 'ANTHROPIC_API_KEY'
+  : env.ANTHROPIC_AUTH_TOKEN
+    ? 'ANTHROPIC_AUTH_TOKEN'
+    : env.CLAUDE_CODE_OAUTH_TOKEN
+      ? 'CLAUDE_CODE_OAUTH_TOKEN'
+      : env.CLAUDE_CODE_USE_BEDROCK || env.CLAUDE_CODE_USE_VERTEX || env.CLAUDE_CODE_USE_FOUNDRY
+        ? 'cloud provider (Bedrock/Vertex/Foundry)'
+        : fs.existsSync(path.join(claudeConfigDir, '.credentials.json'))
+          ? `Claude Code login (${claudeConfigDir})`
+          : '';
 
-const aiModeSetting = (env.AI_MODE ?? 'auto').toLowerCase();
+/**
+ * LIVE is the normal mode. The studio is offline only when the owner explicitly sets AI_MODE=off;
+ * it never falls back to offline or simulated work on its own.
+ */
+const aiModeSetting = (env.AI_MODE ?? 'live').toLowerCase();
 
 export const config = {
   port: Number(env.PORT ?? 8787),
+  /** Separate origin for playing generated games (never the app's own origin). */
+  previewPort: Number(env.PREVIEW_PORT ?? Number(env.PORT ?? 8787) + 1),
   dataDir: path.resolve(REPO_ROOT, env.DATA_DIR ?? 'data'),
   get dbPath() {
     return path.join(this.dataDir, 'studio.db');
@@ -40,16 +58,12 @@ export const config = {
   get workspacesDir() {
     return path.resolve(env.WORKSPACES_DIR ?? path.join(this.dataDir, 'workspaces'));
   },
-  /** 'live' runs real Claude agents; 'offline' never calls the model. */
-  aiMode: (aiModeSetting === 'off' || (aiModeSetting === 'auto' && !hasCredentials) ? 'offline' : 'live') as
-    | 'live'
-    | 'offline',
-  aiReason:
-    aiModeSetting === 'off'
-      ? 'AI_MODE=off'
-      : aiModeSetting === 'auto' && !hasCredentials
-        ? 'No Anthropic credentials found. Set ANTHROPIC_API_KEY in .env and restart the server.'
-        : 'Claude Agent SDK ready',
+  /** 'live' runs real Claude agents; 'offline' (only with AI_MODE=off) never calls the model. */
+  aiMode: (aiModeSetting === 'off' ? 'offline' : 'live') as 'live' | 'offline',
+  aiReason: aiModeSetting === 'off' ? 'AI_MODE=off in .env (explicitly disabled by the owner)' : 'Claude Agent SDK',
+  credentialHint,
+  /** One minimal real Agent SDK call at startup proves authentication works (fractions of a cent). */
+  aiPreflight: bool(env.AI_PREFLIGHT, true),
   model: env.AGENT_MODEL ?? 'claude-opus-5-5',
   maxConcurrentAgents: Math.max(1, Number(env.MAX_CONCURRENT_AGENTS ?? 2)),
   maxTurnsPerTask: Number(env.MAX_TURNS_PER_TASK ?? 40),

@@ -7,6 +7,7 @@ import type { Store } from '../db/store.js';
 import type { Hub } from '../events/hub.js';
 import { runAgent, type RunOptions, type RunResult } from '../agents/runner.js';
 import { isWritable } from '../agents/guard.js';
+import { playtestServer } from '../agents/playtest.js';
 import type { KnowledgeService, RoutingPlan } from '../knowledge/service.js';
 import type { CitationCheck, KnowledgeHit, Skill } from '@pixel/shared';
 import {
@@ -248,7 +249,7 @@ export class Studio {
       const ctx = { agentId: opts.agentId, projectId: opts.projectId, taskId: opts.taskId, runId: run.id, tools: know.tools, engineVersion: know.plan.engine.version };
       this.knowledge.recordRouting({ runId: run.id, projectId: opts.projectId, taskId: opts.taskId, agentId: opts.agentId }, know.plan);
       if (know.skill) this.knowledge.recordSkill(ctx, know.skill, know.skillHow);
-      for (const sk of know.plan.supporting) this.knowledge.recordSkill(ctx, sk, 'supporting skill (discipline match)');
+      for (const sk of know.plan.supporting) this.knowledge.recordSkill(ctx, sk, 'supporting skill (discipline match)', false);
       for (const h of know.hits) this.knowledge.record(ctx, 'auto', h, know.query);
       const k = this.knowledge.agentServer(ctx);
       opts = {
@@ -257,6 +258,12 @@ export class Studio {
         mcpServers: { ...(opts.mcpServers ?? {}), knowledge: k.server },
         mcpTools: [...(opts.mcpTools ?? []), ...k.toolNames],
       };
+    }
+    // Real playtesting (headless browser on the local workspace only) for the agents that build or test games.
+    const extraFiles: string[] = [];
+    if (opts.agentId === 'qa' || opts.agentId === 'programmer') {
+      const pt = playtestServer({ agentId: opts.agentId, root: workspaceRoot(opts.projectId), onFile: (f) => extraFiles.push(f) });
+      opts = { ...opts, mcpServers: { ...(opts.mcpServers ?? {}), playtest: pt.server }, mcpTools: [...(opts.mcpTools ?? []), ...pt.toolNames] };
     }
     let res: RunResult;
     try {
@@ -280,6 +287,10 @@ export class Studio {
       this.store.finishRun(run.id, { sessionId: null, status: 'error', costUsd: null, error: errorMessage(e) });
       this.hub.broadcast({ kind: 'usage_updated', projectId: opts.projectId, taskId: opts.taskId }, opts.projectId);
       throw e;
+    }
+    if (extraFiles.length) {
+      res = { ...res, files: [...new Set([...res.files, ...extraFiles])] };
+      this.hub.broadcast({ kind: 'files_changed', projectId: opts.projectId }, opts.projectId);
     }
     // The SDK's total_cost_usd is cumulative for a resumed session; record this run's own share.
     let costUsd: number | null = null;
@@ -528,13 +539,25 @@ export class Studio {
       const costUsd = this.costOf(current);
 
       if (!res.ok) {
-        this.failTask(current.id, res.error || 'Unknown error', { files, costUsd, result: res.text });
+        this.failTask(current.id, res.error || 'Unknown error', { files: this.existingFiles(task.projectId, files), costUsd, result: res.text });
+        return;
+      }
+      // Verified output: only files that really exist on disk are recorded, and a run that produced
+      // nothing is a failure, whatever the agent's report says.
+      const verified = this.existingFiles(task.projectId, files);
+      const produced = this.existingFiles(task.projectId, res.files);
+      if (!produced.length && !(current.revisionCount > 0 && verified.length)) {
+        this.failTask(
+          current.id,
+          `${AGENTS[agentId].name} finished, but no output file exists in the project workspace (${workspaceRoot(task.projectId)}). The agent's report is not accepted as proof of work.`,
+          { files: verified, costUsd, result: res.text },
+        );
         return;
       }
 
-      this.checkCitations(current, res.runId, res.files.length ? res.files : files, res.text);
+      this.checkCitations(current, res.runId, produced.length ? produced : verified, res.text);
       task = this.pushTask(
-        this.store.updateTask(task.id, { status: 'in_review', result: res.text, files, costUsd, error: '' }),
+        this.store.updateTask(task.id, { status: 'in_review', result: res.text, files: verified, costUsd, error: '' }),
       );
       // Report back to the Director (visible in the Director chat).
       const report = this.store.addChat({
@@ -632,9 +655,25 @@ export class Studio {
     return this.store.taskKnownCost(t.id);
   }
 
+  /** Workspace-relative paths that exist as regular files right now. */
+  private existingFiles(projectId: string, files: string[]) {
+    const root = workspaceRoot(projectId);
+    return files.filter((f) => {
+      const abs = path.resolve(root, f);
+      return abs.startsWith(root + path.sep) && fs.existsSync(abs) && fs.statSync(abs).isFile();
+    });
+  }
+
   private complete(id: string) {
+    // Never COMPLETED without output that exists on disk at completion time.
+    const before = this.store.getTask(id);
+    const files = this.existingFiles(before.projectId, before.files);
+    if (!files.length) {
+      this.failTask(id, `Cannot complete: none of the task's output files exist in the workspace any more (${before.files.join(', ') || 'none recorded'}).`);
+      return;
+    }
     // Review notes and owner comments live in task_reviews; the task record is not overwritten.
-    const t = this.pushTask(this.store.updateTask(id, { status: 'done', completedAt: nowIso() }));
+    const t = this.pushTask(this.store.updateTask(id, { status: 'done', completedAt: nowIso(), files }));
     this.hub.emit('task_completed', {
       projectId: t.projectId,
       agentId: t.assignee,
