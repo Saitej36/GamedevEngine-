@@ -63,8 +63,10 @@ export function OfficeView() {
       )}
       {mode === 'disconnected' && (
         <div className="office-banner error">
-          <strong>STUDIO SERVER NOT REACHABLE</strong> — {connectionError || 'no response from /api'}. Start it with <code>npm run dev</code> (or{' '}
-          <code>npm start</code>) in the repository and retry. No work can run until it is connected.
+          <span className="banner-text">
+            <strong>STUDIO SERVER NOT REACHABLE</strong> — {connectionError || 'no response from /api'}. Start it with <code>npm run dev</code> (or{' '}
+            <code>npm start</code>) in the repository and retry. No work can run until it is connected.
+          </span>
           <button className="btn small" onClick={() => retryConnection()}>Retry</button>
           <button className="btn small ghost" onClick={() => openDemo()}>Open simulated demo</button>
         </div>
@@ -72,9 +74,9 @@ export function OfficeView() {
       {mode === 'live' && info && info.ai.state !== 'ready' && (
         <div className={`office-banner ${info.ai.state === 'error' ? 'error' : 'warn'}`}>
           {info.ai.state === 'error' && (
-            <>
+            <span className="banner-text">
               <strong>AI CONFIGURATION ERROR</strong> — {info.ai.detail} Tasks stay queued until this is fixed.
-            </>
+            </span>
           )}
           {info.ai.state === 'disabled' && (
             <>

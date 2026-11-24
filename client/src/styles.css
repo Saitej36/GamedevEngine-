@@ -364,3 +364,5 @@ button.pill { cursor: pointer; }
 .badge.error { color: var(--red, #f87171); border-color: #7f1d1d; cursor: pointer; }
 .files-head { display: flex; gap: 8px; align-items: center; padding: 6px 8px; border-bottom: 1px solid var(--line, #2a2f3a); flex-wrap: wrap; }
 .files-head code { word-break: break-all; }
+.office-banner .banner-text { display: block; max-width: 640px; line-height: 1.5; }
+.office-banner .banner-text strong { margin-right: 4px; }
